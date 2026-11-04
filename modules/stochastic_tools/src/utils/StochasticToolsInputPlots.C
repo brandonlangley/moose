@@ -463,6 +463,69 @@ buildMarginalPlotResponses(MooseServer & moose_server,
 }
 
 void
+buildCorrelationPlotResponse(MooseServer & moose_server,
+                             wasp::DataArray & plotting_responses,
+                             const std::vector<std::vector<double>> & column_values,
+                             const std::string & plot_title)
+{
+  // scale the input columns before centering to avoid unnecessary overflow
+  auto scaled_values = column_values;
+  std::vector<double> column_variance(column_values.size(), 0);
+  for (const auto column : index_range(scaled_values))
+  {
+    const auto data_bounds =
+        std::minmax_element(column_values[column].begin(), column_values[column].end());
+    if (*data_bounds.first == *data_bounds.second)
+      continue;
+    double value_scale = 0, sample_mean = 0;
+    for (const auto sample_value : scaled_values[column])
+      value_scale = std::max(value_scale, std::abs(sample_value));
+    if (!value_scale)
+      continue;
+    const auto first_value = scaled_values[column].front();
+    for (auto & sample_value : scaled_values[column])
+    {
+      const auto value_difference = sample_value - first_value;
+      sample_value = std::isfinite(value_difference)
+                         ? value_difference / value_scale
+                         : sample_value / value_scale - first_value / value_scale;
+      sample_mean += sample_value / scaled_values[column].size();
+    }
+    for (auto & sample_value : scaled_values[column])
+    {
+      sample_value -= sample_mean;
+      column_variance[column] += sample_value * sample_value;
+    }
+  }
+  auto plot_object = buildInputPlot(
+      plot_title + " displayed input correlations", "column pair", "Pearson sample correlation");
+  std::vector<double> graph_keys, graph_vals;
+  for (const auto i : index_range(column_values))
+    for (std::size_t j = i + 1; j < column_values.size(); ++j)
+    {
+      if (!column_variance[i] || !column_variance[j])
+        // omit constant input pairs since their correlations are undefined
+        continue;
+      double covariance = 0;
+      for (const auto sample_row : index_range(column_values[i]))
+        covariance += scaled_values[i][sample_row] * scaled_values[j][sample_row];
+      const auto correlation =
+          covariance / (std::sqrt(column_variance[i]) * std::sqrt(column_variance[j]));
+      graph_keys.push_back(graph_keys.size());
+      graph_vals.push_back(std::clamp(correlation, -1.0, 1.0));
+      plot_object.x1Axis().ticks().push_back(
+          {std::to_string(i) + "-" + std::to_string(j), graph_keys.back()});
+    }
+  if (graph_keys.empty())
+    return;
+  addInputPlotCurve(moose_server, plot_object, "displayed rows", graph_keys, graph_vals);
+  // pad correlation bounds five percent to leave the endpoint dots visible
+  plot_object.y1Axis().rangeMin(-1.05);
+  plot_object.y1Axis().rangeMax(1.05);
+  addInputPlotResponse(plotting_responses, plot_object);
+}
+
+void
 buildSamplerPlotResponses(MooseServer & moose_server,
                           wasp::DataArray & plotting_responses,
                           FEProblemBase & problem,
@@ -491,6 +554,7 @@ buildSamplerPlotResponses(MooseServer & moose_server,
       moose_server, plotting_responses, *sampler_ptr, row_indices, plot_title);
   buildPolynomialPlotResponses(moose_server, plotting_responses, problem, *sampler_ptr);
   buildMarginalPlotResponses(moose_server, plotting_responses, column_values, plot_title);
+  buildCorrelationPlotResponse(moose_server, plotting_responses, column_values, plot_title);
   if (column_values.size() > 1)
   {
     auto scatter_plot = buildInputPlot(plot_title + " paired columns", "column 0", "column 1");

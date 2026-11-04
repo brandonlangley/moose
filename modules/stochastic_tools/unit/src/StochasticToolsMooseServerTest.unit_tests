@@ -85,4 +85,16 @@
     unit_test = StochasticToolsMooseServerTest.PlottingSamplerConstantMarginals
     requirement = 'The system shall keep constant input marginals visible within finite plotting ranges.'
   []
+
+  [sampler_correlations]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingSamplerCorrelations
+    requirement = 'The system shall preserve signed sample correlations and omit pairs containing constant input columns.'
+  []
+
+  [sampler_constant_correlations]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingSamplerConstantCorrelations
+    requirement = 'The system shall treat correlation with a constant input column as undefined despite rounding.'
+  []
 []

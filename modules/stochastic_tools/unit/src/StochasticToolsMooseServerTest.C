@@ -587,3 +587,43 @@ TEST_F(StochasticToolsMooseServerTest, PlottingSamplerConstantMarginals)
   ASSERT_NE(graph_keys.end(), five_iter);
   EXPECT_EQ(1, cumulative_plot->series()[0]->values()[five_iter - graph_keys.begin()]);
 }
+
+TEST_F(StochasticToolsMooseServerTest, PlottingSamplerCorrelations)
+{
+  // prepare input objects used by the specified plotting extension request
+  ASSERT_TRUE(check_plotting_input(build_plotting_input(R"INPUT(
+[Samplers]
+  [design]
+    type = InputMatrix
+    matrix = '1 2 6 7; 2 4 4 7; 3 6 2 7'
+  []
+[]
+)INPUT")));
+  ASSERT_TRUE(check_plotting_request("type = InputMatrix"));
+  const auto correlation_plot = get_plotting_object("displayed input correlations");
+  ASSERT_TRUE(correlation_plot);
+  ASSERT_EQ(3u, correlation_plot->series()[0]->values().size());
+  // allow rounding in standardized correlations of exactly related columns
+  EXPECT_NEAR(1, correlation_plot->series()[0]->values()[0], 1e-12);
+  EXPECT_NEAR(-1, correlation_plot->series()[0]->values()[1], 1e-12);
+  EXPECT_NEAR(-1, correlation_plot->series()[0]->values()[2], 1e-12);
+  EXPECT_EQ("0-1", correlation_plot->x1Axis().ticks()[0].first);
+  EXPECT_EQ("1-2", correlation_plot->x1Axis().ticks()[2].first);
+  EXPECT_LT(correlation_plot->y1Axis().rangeMin(), -1);
+  EXPECT_GT(correlation_plot->y1Axis().rangeMax(), 1);
+}
+
+TEST_F(StochasticToolsMooseServerTest, PlottingSamplerConstantCorrelations)
+{
+  // prepare input objects used by the specified plotting extension request
+  ASSERT_TRUE(check_plotting_input(build_plotting_input(R"INPUT(
+[Samplers]
+  [design]
+    type = InputMatrix
+    matrix = '1 7; 2 7; 3 7; 4 7; 5 7; 6 7; 7 7; 8 7; 9 7; 10 7'
+  []
+[]
+)INPUT")));
+  ASSERT_TRUE(check_plotting_request("type = InputMatrix"));
+  EXPECT_FALSE(get_plotting_object("displayed input correlations"));
+}
