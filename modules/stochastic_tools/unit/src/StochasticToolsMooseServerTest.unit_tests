@@ -132,4 +132,10 @@
     requirement = 'The system shall place the requested distribution first when comparing configured input distributions.'
     design = 'syntax/Distributions/index.md'
   []
+
+  [sampler_priors]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingSamplerPriors
+    requirement = 'The system shall preview configured Bayesian priors and initial values without generating chain samples.'
+  []
 []

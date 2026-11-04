@@ -766,6 +766,90 @@ buildComparisonPlotResponses(MooseServer & moose_server,
 }
 
 void
+buildPriorPlotResponses(MooseServer & moose_server,
+                        wasp::DataArray & plotting_responses,
+                        FEProblemBase & problem,
+                        const std::string & object_name)
+{
+  // read configured prior distributions without requesting sampler samples
+  const auto * sampler_ptr = getInputPlotObject<Sampler>(problem, object_name, "Sampler");
+  if (!sampler_ptr)
+    return;
+  std::vector<DistributionName> dist_names;
+  if (sampler_ptr->isParamValid("prior_distributions"))
+  {
+    dist_names = sampler_ptr->getParam<std::vector<DistributionName>>("prior_distributions");
+    if (sampler_ptr->isParamValid("prior_variance"))
+      dist_names.push_back(sampler_ptr->getParam<DistributionName>("prior_variance"));
+  }
+  else if (!isSamplerInputPlotSupported(problem, *sampler_ptr) &&
+           sampler_ptr->parameters().have_parameter<std::vector<DistributionName>>(
+               "distributions") &&
+           sampler_ptr->isParamValid("distributions"))
+    dist_names = sampler_ptr->getParam<std::vector<DistributionName>>("distributions");
+  const auto * initial_values = sampler_ptr->isParamValid("initial_values")
+                                    ? &sampler_ptr->getParam<std::vector<Real>>("initial_values")
+                                    : nullptr;
+  for (const auto column : make_range(std::min<std::size_t>(4, dist_names.size())))
+  {
+    const auto & dist = problem.getDistribution(dist_names[column]);
+    std::vector<double> probabilities, quantiles;
+    try
+    {
+      getDistributionPlotData(dist, probabilities, quantiles);
+    }
+    catch (const std::exception &)
+    {
+      continue;
+    }
+    for (const std::string plot_type : {"PDF", "CDF"})
+      try
+      {
+        std::vector<double> graph_vals;
+        if (plot_type == "CDF")
+          graph_vals = getDistributionPlotCDF(dist, quantiles);
+        else
+          for (const auto initial_value : quantiles)
+          {
+            graph_vals.push_back(dist.pdf(initial_value));
+            if (!std::isfinite(graph_vals.back()) || graph_vals.back() < 0)
+              throw std::invalid_argument("Invalid configured prior density");
+          }
+        auto plot_object = buildInputPlot(
+            object_name + " configured sampling distribution " + std::to_string(column) + "/" +
+                std::to_string(dist_names.size()) + ": " + dist_names[column] + " " + plot_type,
+            "input value",
+            plot_type == "PDF" ? "probability density" : "cumulative probability");
+        addInputPlotCurve(
+            moose_server, plot_object, dist_names[column], quantiles, graph_vals, true);
+        if (initial_values && column < initial_values->size() &&
+            std::isfinite((*initial_values)[column]))
+        {
+          const auto initial_value = (*initial_values)[column];
+          const auto graph_value =
+              plot_type == "PDF" ? dist.pdf(initial_value) : dist.cdf(initial_value);
+          if (std::isfinite(graph_value) && graph_value >= 0 &&
+              (plot_type == "PDF" || graph_value <= 1))
+            addInputPlotCurve(moose_server,
+                              plot_object,
+                              "configured initial value",
+                              {initial_value},
+                              {graph_value});
+        }
+        if (plot_type == "CDF")
+        {
+          plot_object.y1Axis().rangeMin(0);
+          plot_object.y1Axis().rangeMax(1);
+        }
+        addInputPlotResponse(plotting_responses, plot_object);
+      }
+      catch (const std::exception &)
+      {
+      }
+  }
+}
+
+void
 buildSamplerPlotResponses(MooseServer & moose_server,
                           wasp::DataArray & plotting_responses,
                           FEProblemBase & problem,
@@ -809,6 +893,7 @@ void
 StochasticTools::registerInputPlots()
 {
   MooseServer::registerInputPlotter("Samplers", "input-design", buildSamplerPlotResponses);
+  MooseServer::registerInputPlotter("Samplers", "sampler-priors", buildPriorPlotResponses);
   MooseServer::registerInputPlotter("Distributions", "quantiles", buildQuantilePlotResponses);
   MooseServer::registerInputPlotter("Distributions", "tails", buildTailPlotResponse);
   MooseServer::registerInputPlotter("Distributions", "log-density", buildLogDensityPlotResponse);

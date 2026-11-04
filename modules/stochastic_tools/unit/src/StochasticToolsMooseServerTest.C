@@ -762,3 +762,35 @@ TEST_F(StochasticToolsMooseServerTest, PlottingDistributionComparisons)
   EXPECT_EQ(0, cumulative_plot->y1Axis().rangeMin());
   EXPECT_EQ(1, cumulative_plot->y1Axis().rangeMax());
 }
+
+TEST_F(StochasticToolsMooseServerTest, PlottingSamplerPriors)
+{
+  // prepare input objects used by the specified plotting extension request
+  const auto input_config_path = write_input_file("configuration.csv", "configuration\n1\n");
+  ASSERT_TRUE(check_plotting_input(build_plotting_input(R"INPUT(
+[Distributions]
+  [u]
+    type = Uniform
+    lower_bound = 0
+    upper_bound = 1
+  []
+[]
+[Samplers]
+  [chain]
+    type = PMCMCBase
+    prior_distributions = u
+    initial_values = 0.25
+    num_parallel_proposals = 1
+    num_random_seeds = 2
+    file_name = ')INPUT" + input_config_path + R"INPUT('
+  []
+[]
+)INPUT")));
+  ASSERT_TRUE(check_plotting_request("type = PMCMCBase"));
+  const auto prior_plot = get_plotting_object("configured sampling distribution 0/1: u CDF");
+  ASSERT_TRUE(prior_plot);
+  ASSERT_EQ(2u, prior_plot->series().size());
+  EXPECT_EQ((std::vector<double>{0.25}), prior_plot->series()[1]->keys());
+  EXPECT_EQ((std::vector<double>{0.25}), prior_plot->series()[1]->values());
+  EXPECT_FALSE(get_plotting_object("input design:"));
+}
