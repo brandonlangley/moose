@@ -536,3 +536,54 @@ TEST_F(StochasticToolsMooseServerTest, PlottingSamplerPolynomialBases)
         (3 * graph_keys[i] * graph_keys[i] - 1) / 2, basis_plot->series()[2]->values()[i], 1e-12);
   }
 }
+
+TEST_F(StochasticToolsMooseServerTest, PlottingSamplerMarginals)
+{
+  // prepare input objects used by the specified plotting extension request
+  ASSERT_TRUE(check_plotting_input(build_plotting_input(R"INPUT(
+[Samplers]
+  [design]
+    type = InputMatrix
+    matrix = '1; 1; 2; 4'
+  []
+[]
+)INPUT")));
+  ASSERT_TRUE(check_plotting_request("type = InputMatrix"));
+  const auto histogram_plot = get_plotting_object("unweighted input histograms");
+  const auto cumulative_plot = get_plotting_object("unweighted input empirical CDFs");
+  ASSERT_TRUE(histogram_plot);
+  ASSERT_TRUE(cumulative_plot);
+  EXPECT_EQ((std::vector<double>{3, 1, 0}), histogram_plot->series()[0]->values());
+  const auto & graph_keys = cumulative_plot->series()[0]->keys();
+  const auto & graph_vals = cumulative_plot->series()[0]->values();
+  const auto one_iter = std::find(graph_keys.begin(), graph_keys.end(), 1);
+  ASSERT_NE(graph_keys.end(), one_iter);
+  EXPECT_DOUBLE_EQ(0.5, graph_vals[one_iter - graph_keys.begin()]);
+  EXPECT_EQ(0, graph_vals.front());
+  EXPECT_EQ(1, graph_vals.back());
+  EXPECT_EQ(
+      wasp::CustomPlot::lsStepLeft,
+      std::static_pointer_cast<wasp::CustomPlot::Graph>(cumulative_plot->series()[0])->lineStyle());
+}
+
+TEST_F(StochasticToolsMooseServerTest, PlottingSamplerConstantMarginals)
+{
+  // prepare input objects used by the specified plotting extension request
+  ASSERT_TRUE(check_plotting_input(build_plotting_input(R"INPUT(
+[Samplers]
+  [design]
+    type = InputMatrix
+    matrix = '5; 5; 5'
+  []
+[]
+)INPUT")));
+  ASSERT_TRUE(check_plotting_request("type = InputMatrix"));
+  const auto cumulative_plot = get_plotting_object("unweighted input empirical CDFs");
+  ASSERT_TRUE(cumulative_plot);
+  EXPECT_LT(cumulative_plot->x1Axis().rangeMin(), 5);
+  EXPECT_GT(cumulative_plot->x1Axis().rangeMax(), 5);
+  const auto & graph_keys = cumulative_plot->series()[0]->keys();
+  const auto five_iter = std::find(graph_keys.begin(), graph_keys.end(), 5);
+  ASSERT_NE(graph_keys.end(), five_iter);
+  EXPECT_EQ(1, cumulative_plot->series()[0]->values()[five_iter - graph_keys.begin()]);
+}

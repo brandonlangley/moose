@@ -384,6 +384,85 @@ buildPolynomialPlotResponses(MooseServer & moose_server,
 }
 
 void
+buildMarginalPlotResponses(MooseServer & moose_server,
+                           wasp::DataArray & plotting_responses,
+                           const std::vector<std::vector<double>> & column_values,
+                           const std::string & plot_title)
+{
+  // build unweighted histograms and cumulative fractions of displayed rows
+  auto histogram_plot = buildInputPlot(
+      plot_title + " unweighted input histograms", "input value", "displayed row count");
+  auto cumulative_plot = buildInputPlot(
+      plot_title + " unweighted input empirical CDFs", "input value", "displayed fraction <= x");
+  for (const auto column : index_range(column_values))
+  {
+    auto sorted_values = column_values[column];
+    std::sort(sorted_values.begin(), sorted_values.end());
+    const auto num_bins = std::min<std::size_t>(32, std::ceil(std::sqrt(sorted_values.size())));
+    double range_min = sorted_values.front(), range_max = sorted_values.back();
+    if (range_min == range_max)
+    {
+      const auto range_padding = 0.05 * std::max(1.0, std::abs(range_min));
+      range_min -= range_padding;
+      range_max += range_padding;
+    }
+    const auto bin_width = (range_max - range_min) / num_bins;
+    if (!std::isfinite(bin_width) || bin_width <= 0)
+      throw std::invalid_argument("Input histogram has no representable finite bin width");
+    std::vector<double> bin_edges, bin_counts(num_bins + 1, 0);
+    for (const auto i : make_range(num_bins + 1))
+      bin_edges.push_back(range_min + (range_max - range_min) * (double(i) / num_bins));
+    for (const auto sample_value : sorted_values)
+      ++bin_counts[std::min<std::size_t>(num_bins - 1, (sample_value - range_min) / bin_width)];
+    addInputPlotCurve(moose_server,
+                      histogram_plot,
+                      "column " + std::to_string(column),
+                      bin_edges,
+                      bin_counts,
+                      true);
+    std::static_pointer_cast<wasp::CustomPlot::Graph>(histogram_plot.series().back())
+        ->lineStyle(wasp::CustomPlot::lsStepLeft);
+
+    const auto range_padding =
+        0.05 * std::max(range_max - range_min, std::max(1.0, std::abs(range_min)));
+    std::vector<double> graph_keys, graph_vals;
+    if (std::isfinite(sorted_values.front() - range_padding) &&
+        sorted_values.front() - range_padding < sorted_values.front())
+    {
+      graph_keys.push_back(sorted_values.front() - range_padding);
+      graph_vals.push_back(0);
+    }
+    for (std::size_t i = 0; i < sorted_values.size();)
+    {
+      const auto sample_value = sorted_values[i];
+      while (i < sorted_values.size() && sorted_values[i] == sample_value)
+        ++i;
+      graph_keys.push_back(sample_value);
+      graph_vals.push_back(double(i) / sorted_values.size());
+    }
+    if (std::isfinite(sorted_values.back() + range_padding) &&
+        sorted_values.back() + range_padding > sorted_values.back())
+    {
+      graph_keys.push_back(sorted_values.back() + range_padding);
+      graph_vals.push_back(1);
+    }
+    addInputPlotCurve(moose_server,
+                      cumulative_plot,
+                      "column " + std::to_string(column),
+                      graph_keys,
+                      graph_vals,
+                      true);
+    std::static_pointer_cast<wasp::CustomPlot::Graph>(cumulative_plot.series().back())
+        ->lineStyle(wasp::CustomPlot::lsStepLeft);
+  }
+  histogram_plot.y1Axis().rangeMin(0);
+  cumulative_plot.y1Axis().rangeMin(0);
+  cumulative_plot.y1Axis().rangeMax(1);
+  addInputPlotResponse(plotting_responses, histogram_plot);
+  addInputPlotResponse(plotting_responses, cumulative_plot);
+}
+
+void
 buildSamplerPlotResponses(MooseServer & moose_server,
                           wasp::DataArray & plotting_responses,
                           FEProblemBase & problem,
@@ -411,6 +490,7 @@ buildSamplerPlotResponses(MooseServer & moose_server,
   buildQuadraturePlotResponse(
       moose_server, plotting_responses, *sampler_ptr, row_indices, plot_title);
   buildPolynomialPlotResponses(moose_server, plotting_responses, problem, *sampler_ptr);
+  buildMarginalPlotResponses(moose_server, plotting_responses, column_values, plot_title);
   if (column_values.size() > 1)
   {
     auto scatter_plot = buildInputPlot(plot_title + " paired columns", "column 0", "column 1");

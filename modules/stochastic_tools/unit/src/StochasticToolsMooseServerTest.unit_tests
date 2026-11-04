@@ -73,4 +73,16 @@
     unit_test = StochasticToolsMooseServerTest.PlottingSamplerPolynomialBases
     requirement = 'The system shall evaluate configured polynomial bases in the coordinates of their input distributions.'
   []
+
+  [sampler_marginals]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingSamplerMarginals
+    requirement = 'The system shall count repeated input rows and include the upper bin endpoint in marginal previews.'
+  []
+
+  [sampler_constant_marginals]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingSamplerConstantMarginals
+    requirement = 'The system shall keep constant input marginals visible within finite plotting ranges.'
+  []
 []
