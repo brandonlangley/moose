@@ -67,4 +67,10 @@
     unit_test = StochasticToolsMooseServerTest.PlottingSamplerQuadratureWeights
     requirement = 'The system shall preserve signed, unnormalized quadrature weights in input previews.'
   []
+
+  [sampler_polynomial_bases]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingSamplerPolynomialBases
+    requirement = 'The system shall evaluate configured polynomial bases in the coordinates of their input distributions.'
+  []
 []

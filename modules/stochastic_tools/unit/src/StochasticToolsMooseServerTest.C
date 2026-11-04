@@ -501,3 +501,38 @@ TEST_F(StochasticToolsMooseServerTest, PlottingSamplerQuadratureWeights)
     EXPECT_DOUBLE_EQ(sampler.getQuadratureWeight(row), observation_values[row]);
   EXPECT_LT(weights_plot->y1Axis().rangeMin(), 0);
 }
+
+TEST_F(StochasticToolsMooseServerTest, PlottingSamplerPolynomialBases)
+{
+  // prepare input objects used by the specified plotting extension request
+  ASSERT_TRUE(check_plotting_input(build_plotting_input(R"INPUT(
+[Distributions]
+  [u]
+    type = Uniform
+    lower_bound = -1
+    upper_bound = 1
+  []
+[]
+[Samplers]
+  [design]
+    type = Quadrature
+    distributions = u
+    order = 2
+  []
+[]
+)INPUT")));
+  ASSERT_TRUE(check_plotting_request("type = Quadrature"));
+  const auto basis_plot = get_plotting_object("polynomial basis: u");
+  ASSERT_TRUE(basis_plot);
+  ASSERT_EQ(3u, basis_plot->series().size());
+  const auto & graph_keys = basis_plot->series()[0]->keys();
+  ASSERT_EQ(201u, graph_keys.size());
+  for (const auto i : index_range(graph_keys))
+  {
+    EXPECT_DOUBLE_EQ(1, basis_plot->series()[0]->values()[i]);
+    EXPECT_NEAR(graph_keys[i], basis_plot->series()[1]->values()[i], 1e-12);
+    // check quadratic basis results with tolerance for polynomial rounding
+    EXPECT_NEAR(
+        (3 * graph_keys[i] * graph_keys[i] - 1) / 2, basis_plot->series()[2]->values()[i], 1e-12);
+  }
+}

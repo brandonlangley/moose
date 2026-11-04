@@ -348,6 +348,42 @@ buildQuadraturePlotResponse(MooseServer & moose_server,
 }
 
 void
+buildPolynomialPlotResponses(MooseServer & moose_server,
+                             wasp::DataArray & plotting_responses,
+                             FEProblemBase & problem,
+                             const Sampler & sampler)
+{
+  if (!dynamic_cast<const QuadratureSampler *>(&sampler))
+    return;
+  const auto & dist_names = sampler.getParam<std::vector<DistributionName>>("distributions");
+  // show two dimensions and degrees up through four for simple basis plots
+  for (const auto column : make_range(std::min<std::size_t>(2, dist_names.size())))
+  {
+    const auto & dist = problem.getDistribution(dist_names[column]);
+    const auto poly_ptr = PolynomialQuadrature::makePolynomial(&dist);
+    std::vector<double> graph_keys;
+    for (const auto i : make_range(201))
+      graph_keys.push_back(dist.quantile(0.001 + 0.998 * i / 200.0));
+    auto plot_object = buildInputPlot(sampler.name() + " polynomial basis: " + dist_names[column],
+                                      "input value",
+                                      "unnormalized basis value");
+    for (const auto degree : make_range(std::min(4u, sampler.getParam<unsigned int>("order")) + 1))
+    {
+      std::vector<double> graph_vals;
+      for (const auto sample_value : graph_keys)
+        graph_vals.push_back(poly_ptr->compute(degree, sample_value, false));
+      addInputPlotCurve(moose_server,
+                        plot_object,
+                        "degree " + std::to_string(degree),
+                        graph_keys,
+                        graph_vals,
+                        true);
+    }
+    addInputPlotResponse(plotting_responses, plot_object);
+  }
+}
+
+void
 buildSamplerPlotResponses(MooseServer & moose_server,
                           wasp::DataArray & plotting_responses,
                           FEProblemBase & problem,
@@ -374,6 +410,7 @@ buildSamplerPlotResponses(MooseServer & moose_server,
   buildSobolPlotResponse(moose_server, plotting_responses, *sampler_ptr, column_values);
   buildQuadraturePlotResponse(
       moose_server, plotting_responses, *sampler_ptr, row_indices, plot_title);
+  buildPolynomialPlotResponses(moose_server, plotting_responses, problem, *sampler_ptr);
   if (column_values.size() > 1)
   {
     auto scatter_plot = buildInputPlot(plot_title + " paired columns", "column 0", "column 1");
