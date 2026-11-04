@@ -731,3 +731,34 @@ TEST_F(StochasticToolsMooseServerTest, PlottingDistributionLogDensity)
   EXPECT_DOUBLE_EQ(0.45, original_plot->y1Axis().rangeMin());
   EXPECT_DOUBLE_EQ(0.55, original_plot->y1Axis().rangeMax());
 }
+
+TEST_F(StochasticToolsMooseServerTest, PlottingDistributionComparisons)
+{
+  // prepare input objects used by the specified plotting extension request
+  ASSERT_TRUE(check_plotting_input(build_plotting_input(R"INPUT(
+[Distributions]
+  [a]
+    type = Uniform
+    lower_bound = 0
+    upper_bound = 1
+  []
+  [b]
+    type = Uniform
+    lower_bound = 2
+    upper_bound = 4
+  []
+[]
+)INPUT")));
+  ASSERT_TRUE(check_plotting_request("lower_bound = 2"));
+  const auto density_plot = get_plotting_object("configured PDF comparisons");
+  const auto cumulative_plot = get_plotting_object("configured CDF comparisons");
+  ASSERT_TRUE(density_plot);
+  ASSERT_TRUE(cumulative_plot);
+  ASSERT_EQ(2u, density_plot->series().size());
+  EXPECT_EQ("b", density_plot->series()[0]->name());
+  EXPECT_EQ("a", density_plot->series()[1]->name());
+  EXPECT_DOUBLE_EQ(0.5, density_plot->series()[0]->values()[100]);
+  EXPECT_DOUBLE_EQ(1, density_plot->series()[1]->values()[100]);
+  EXPECT_EQ(0, cumulative_plot->y1Axis().rangeMin());
+  EXPECT_EQ(1, cumulative_plot->y1Axis().rangeMax());
+}

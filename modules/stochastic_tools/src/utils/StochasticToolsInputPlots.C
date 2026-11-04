@@ -685,6 +685,87 @@ buildLogDensityPlotResponse(MooseServer & moose_server,
 }
 
 void
+buildComparisonPlotResponses(MooseServer & moose_server,
+                             wasp::DataArray & plotting_responses,
+                             FEProblemBase & problem,
+                             const std::string & object_name)
+{
+  // place the configured distribution before three other active input laws
+  auto * selected_dist = getInputPlotObject<Distribution>(problem, object_name, "Distribution");
+  if (!selected_dist)
+    return;
+  std::vector<Distribution *> all_distributions;
+  problem.theWarehouse()
+      .query()
+      .condition<AttribSystem>("Distribution")
+      .queryInto(all_distributions);
+  std::sort(all_distributions.begin(),
+            all_distributions.end(),
+            [](const auto * a, const auto * b) { return a->name() < b->name(); });
+  std::vector<Distribution *> plot_distributions = {selected_dist};
+  for (auto * dist_ptr : all_distributions)
+    if (dist_ptr != selected_dist && plot_distributions.size() < 4)
+      plot_distributions.push_back(dist_ptr);
+  if (plot_distributions.size() < 2)
+    return;
+  auto density_plot = buildInputPlot(
+      object_name + " configured PDF comparisons", "input value", "probability density");
+  auto cumulative_plot = buildInputPlot(
+      object_name + " configured CDF comparisons", "input value", "cumulative probability");
+  for (const auto * dist_ptr : plot_distributions)
+  {
+    std::vector<double> probabilities, quantiles;
+    try
+    {
+      getDistributionPlotData(*dist_ptr, probabilities, quantiles);
+    }
+    catch (const std::exception &)
+    {
+      continue;
+    }
+    try
+    {
+      std::vector<double> graph_vals;
+      for (const auto quantile_value : quantiles)
+      {
+        graph_vals.push_back(dist_ptr->pdf(quantile_value));
+        if (!std::isfinite(graph_vals.back()) || graph_vals.back() < 0)
+          throw std::invalid_argument("Invalid comparison density");
+      }
+      addInputPlotCurve(moose_server, density_plot, dist_ptr->name(), quantiles, graph_vals, true);
+    }
+    catch (const std::exception &)
+    {
+    }
+    try
+    {
+      addInputPlotCurve(moose_server,
+                        cumulative_plot,
+                        dist_ptr->name(),
+                        quantiles,
+                        getDistributionPlotCDF(*dist_ptr, quantiles),
+                        true);
+    }
+    catch (const std::exception &)
+    {
+    }
+  }
+  for (auto * plot_object : {&density_plot, &cumulative_plot})
+    if (plot_object->series().size() > 1)
+    {
+      plot_object->title().text(plot_object->title().text() + " (" +
+                                std::to_string(plot_object->series().size()) + "/" +
+                                std::to_string(plot_distributions.size()) + " curves available)");
+      if (plot_object == &cumulative_plot)
+      {
+        plot_object->y1Axis().rangeMin(0);
+        plot_object->y1Axis().rangeMax(1);
+      }
+      addInputPlotResponse(plotting_responses, *plot_object);
+    }
+}
+
+void
 buildSamplerPlotResponses(MooseServer & moose_server,
                           wasp::DataArray & plotting_responses,
                           FEProblemBase & problem,
@@ -731,4 +812,5 @@ StochasticTools::registerInputPlots()
   MooseServer::registerInputPlotter("Distributions", "quantiles", buildQuantilePlotResponses);
   MooseServer::registerInputPlotter("Distributions", "tails", buildTailPlotResponse);
   MooseServer::registerInputPlotter("Distributions", "log-density", buildLogDensityPlotResponse);
+  MooseServer::registerInputPlotter("Distributions", "comparison", buildComparisonPlotResponses);
 }

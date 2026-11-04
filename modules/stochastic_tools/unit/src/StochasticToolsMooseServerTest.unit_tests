@@ -125,4 +125,11 @@
     requirement = 'The system shall keep positive distribution densities visible on logarithmic axes without changing the ordinary density preview.'
     design = 'syntax/Distributions/index.md'
   []
+
+  [distribution_comparisons]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingDistributionComparisons
+    requirement = 'The system shall place the requested distribution first when comparing configured input distributions.'
+    design = 'syntax/Distributions/index.md'
+  []
 []
