@@ -3746,3 +3746,59 @@ TEST_F(MooseServerTest, DocumentCloseShutdownAndExit)
 
   EXPECT_TRUE(moose_server->getErrors().empty());
 }
+
+TEST_F(MooseServerTest, PlottingInputCallbacks)
+{
+  // prepare function input to test the registered plotting callback result
+  std::string doc_text_open = R"INPUT(
+[Mesh]
+  type = GeneratedMesh
+  dim = 1
+[]
+[Problem]
+  solve = false
+[]
+[Functions]
+  [target]
+    type = PiecewiseLinear
+    xy_data = '0 0 1 1'
+  []
+[]
+[Executioner]
+  type = Steady
+[]
+)INPUT";
+  MooseServer plot_server(*moose_unit_app);
+  check_plotting_input(plot_server, doc_text_open);
+
+  // register a module callback that appends a graph using the line builder
+  MooseServer::registerInputPlotter(
+      "Functions",
+      "input-callback-test",
+      [](MooseServer & moose_server,
+         wasp::DataArray & plotting_responses,
+         FEProblemBase &,
+         const std::string & object_name)
+      {
+        wasp::CustomPlot plot_object;
+        moose_server.buildLineGraphPlot(
+            plot_object, object_name + " input callback", "x", "y", {0, 1}, {2, 3});
+        plotting_responses.push_back(wasp::serializeCustomPlot(plot_object));
+      });
+  auto ext_array = check_plotting_request(plot_server, 11, 4, 2);
+  MooseServer::registerInputPlotter("Functions", "input-callback-test", nullptr);
+  ASSERT_EQ(2u, ext_array.size());
+  auto check_plot = wasp::deserializeCustomPlot(*ext_array[1].to_object());
+  EXPECT_EQ("target input callback", check_plot->title().text());
+
+  // keep an ordinary function plot when the registered callback has errors
+  MooseServer::registerInputPlotter(
+      "Functions",
+      "input-callback-test",
+      [](MooseServer &, wasp::DataArray &, FEProblemBase &, const std::string &)
+      { mooseError("Unavailable optional input preview"); });
+  auto error_array =
+      check_plotting_request(plot_server, 11, 4, 1, "Unavailable optional input preview");
+  MooseServer::registerInputPlotter("Functions", "input-callback-test", nullptr);
+  EXPECT_EQ(1u, error_array.size());
+}

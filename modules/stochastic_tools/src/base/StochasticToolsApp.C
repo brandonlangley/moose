@@ -11,6 +11,7 @@
 #include "Moose.h"
 #include "AppFactory.h"
 #include "MooseSyntax.h"
+#include "StochasticToolsInputPlots.h"
 
 InputParameters
 StochasticToolsApp::validParams()
@@ -37,6 +38,7 @@ StochasticToolsApp::registerAll(Factory & f, ActionFactory & af, Syntax & syntax
 {
   Registry::registerObjectsTo(f, {"StochasticToolsApp"});
   Registry::registerActionsTo(af, {"StochasticToolsApp"});
+  StochasticTools::registerInputPlots();
 
   // Adds [Trainers] block
   registerSyntaxTask("AddSurrogateAction", "Trainers/*", "add_trainer");

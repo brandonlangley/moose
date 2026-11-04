@@ -1,0 +1,28 @@
+[Tests]
+  design = 'Sampler.md'
+  issues = '#22766'
+
+  [sampler_input_pairs]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingSamplerInputPairs
+    requirement = 'The system shall preserve paired values and input row order when plotting a static sampler design.'
+  []
+
+  [sampler_input_rows]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingSamplerInputRows
+    requirement = 'The system shall bound static sampler previews and include the first and last input rows.'
+  []
+
+  [sampler_input_columns]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingSamplerInputColumns
+    requirement = 'The system shall preserve the configured column selection and order when plotting CSV sampler inputs.'
+  []
+
+  [sampler_input_vectors]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingSamplerInputVectors
+    requirement = 'The system shall preview declared constant Reporter vectors without executing or resizing their sampler.'
+  []
+[]

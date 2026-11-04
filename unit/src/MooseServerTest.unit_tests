@@ -61,4 +61,10 @@
     unit_test = MooseServerTest.PlottingFunctionData
     requirement = 'The system shall return no preview for empty function data and reject nonfinite data or invalid axis ranges.'
   []
+
+  [input_callbacks]
+    type = GoogleTest
+    unit_test = MooseServerTest.PlottingInputCallbacks
+    requirement = 'The system shall append registered input plots and retain existing plots when an input callback fails.'
+  []
 []

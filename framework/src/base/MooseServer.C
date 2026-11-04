@@ -52,6 +52,29 @@
 #include <stdexcept>
 #include <limits>
 
+namespace
+{
+auto &
+getInputPlotters()
+{
+  // retain module callbacks by section and name after module registrations
+  static std::map<std::string, std::map<std::string, MooseServer::InputPlotter>> input_plotters;
+  return input_plotters;
+}
+}
+
+void
+MooseServer::registerInputPlotter(const std::string & object_section,
+                                  const std::string & plot_name,
+                                  InputPlotter input_plotter)
+{
+  // replace duplicate registrations or remove callbacks given a null value
+  if (input_plotter)
+    getInputPlotters()[object_section][plot_name] = input_plotter;
+  else
+    getInputPlotters()[object_section].erase(plot_name);
+}
+
 MooseServer::MooseServer(MooseApp & moose_app)
   : _moose_app(moose_app),
     _connection(std::make_shared<wasp::lsp::IOStreamConnection>(this)),
@@ -1961,6 +1984,19 @@ MooseServer::gatherPlottingResponses(wasp::DataArray & plotting_responses, int l
   // check problem to build PDF and CDF plots if request is in distribution
   else if (object_section == "Distributions" && problem->hasDistribution(object_name))
     buildDistPlotResponses(plotting_responses, *problem, object_name, object_type);
+
+  // collect module input plots without discarding any successful responses
+  auto plotters_iter = getInputPlotters().find(object_section);
+  if (plotters_iter != getInputPlotters().end())
+    for (const auto & plotter_entry : plotters_iter->second)
+      try
+      {
+        plotter_entry.second(*this, plotting_responses, *problem, object_name);
+      }
+      catch (const std::exception & e)
+      {
+        errors << "Input plot " << plotter_entry.first << ": " << e.what() << std::endl;
+      }
 
   return true;
 }

@@ -52,6 +52,33 @@ public:
    */
   void setDistPlotNumPoints(std::size_t num_points) { _dist_plot_num_points = num_points; }
 
+  /** Callback for modules to append the configured input plotting data. */
+  using InputPlotter = void (*)(MooseServer &,
+                                wasp::DataArray &,
+                                FEProblemBase &,
+                                const std::string &);
+
+  /** Register module input plot entries or remove them by passing null. */
+  static void registerInputPlotter(const std::string & object_section,
+                                   const std::string & plot_name,
+                                   InputPlotter input_plotter);
+
+  /**
+   * Build CustomPlot graph with provided keys, values, and plot title.
+   * @param plot_object - CustomPlot object to be built into line graph
+   * @param plot_title - title for plot composed of block name and type
+   * @param x_axis_label - label for x-axis of plot dependent upon type
+   * @param y_axis_label - label for y-axis of plot dependent upon type
+   * @param graph_keys - x values of function or distribution for graph
+   * @param graph_vals - y values of function or distribution for graph
+   */
+  void buildLineGraphPlot(wasp::CustomPlot & plot_object,
+                          const std::string & plot_title,
+                          const std::string & x_axis_label,
+                          const std::string & y_axis_label,
+                          const std::vector<double> & graph_keys,
+                          const std::vector<double> & graph_vals);
+
 private:
   /**
    * SortedLocationNodes - type alias for set of nodes sorted by location
@@ -396,22 +423,6 @@ private:
                               FEProblemBase & problem,
                               const std::string & object_name,
                               const std::string & object_type);
-
-  /**
-   * Build CustomPlot graph with provided keys, values, and plot title.
-   * @param plot_object - CustomPlot object to be built into line graph
-   * @param plot_title - title for plot composed of block name and type
-   * @param x_axis_label - label for x-axis of plot dependent upon type
-   * @param y_axis_label - label for y-axis of plot dependent upon type
-   * @param graph_keys - x values of function or distribution for graph
-   * @param graph_vals - y values of function or distribution for graph
-   */
-  void buildLineGraphPlot(wasp::CustomPlot & plot_object,
-                          const std::string & plot_title,
-                          const std::string & x_axis_label,
-                          const std::string & y_axis_label,
-                          const std::vector<double> & graph_keys,
-                          const std::vector<double> & graph_vals);
 
   /**
    * Read from connection into object - specific to this server's connection.
