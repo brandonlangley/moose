@@ -129,7 +129,8 @@ isSamplerInputPlotSupported(FEProblemBase &, const Sampler & sampler, unsigned i
                                                "MonteCarlo",
                                                "MonteCarloSampler",
                                                "LatinHypercube",
-                                               "NestedMonteCarlo"};
+                                               "NestedMonteCarlo",
+                                               "MorrisSampler"};
   return sampler_types.count(sampler.type());
 }
 
@@ -184,9 +185,10 @@ getSamplerInputData(FEProblemBase & problem,
   }
   else if (!isSamplerInputPlotSupported(problem, sampler))
     return false;
-  const bool use_first_rows =
-      sampler.type() == "MonteCarlo" || sampler.type() == "MonteCarloSampler" ||
-      sampler.type() == "LatinHypercube" || sampler.type() == "NestedMonteCarlo";
+  const bool use_first_rows = sampler.type() == "MorrisSampler" || sampler.type() == "MonteCarlo" ||
+                              sampler.type() == "MonteCarloSampler" ||
+                              sampler.type() == "LatinHypercube" ||
+                              sampler.type() == "NestedMonteCarlo";
   // cap indexed work at 200000 draws as earlier random draws are traversed
   constexpr dof_id_type draw_limit = 200000;
   if (sampler.type() == "LatinHypercube" && num_columns > 1024)
@@ -204,6 +206,13 @@ getSamplerInputData(FEProblemBase & problem,
                                                     std::min(num_columns, column_limit))));
   if (!plot_num_rows || !num_columns)
     return false;
+  // cap dense Morris work at eight dimensions and eight input trajectories
+  if (sampler.type() == "MorrisSampler")
+  {
+    if (num_columns > 8)
+      return false;
+    plot_num_rows = std::min<dof_id_type>(num_rows, 8 * (num_columns + 1));
+  }
   column_values.resize(std::min(num_columns, column_limit));
   for (const auto i : make_range(plot_num_rows))
   {
@@ -230,6 +239,40 @@ getSamplerInputData(FEProblemBase & problem,
 }
 
 void
+buildMorrisPlotResponse(MooseServer & moose_server,
+                        wasp::DataArray & plotting_responses,
+                        const Sampler & sampler,
+                        const std::vector<std::vector<double>> & column_values)
+{
+  // index every input trajectory by steps so graph sorting preserves order
+  if (sampler.type() != "MorrisSampler")
+    return;
+  const auto path_length = sampler.getNumberOfCols() + 1;
+  auto plot_object = buildInputPlot(
+      sampler.name() + " Morris input trajectories", "trajectory step", "input value");
+  std::vector<double> graph_keys;
+  for (const auto i : make_range(path_length))
+    graph_keys.push_back(i);
+  for (const auto trajectory : make_range(column_values[0].size() / path_length))
+  {
+    const auto start_row = trajectory * path_length;
+    for (const auto column : index_range(column_values))
+    {
+      const std::vector<double> graph_vals(column_values[column].begin() + start_row,
+                                           column_values[column].begin() + start_row + path_length);
+      addInputPlotCurve(moose_server,
+                        plot_object,
+                        "trajectory " + std::to_string(trajectory) + ", column " +
+                            std::to_string(column),
+                        graph_keys,
+                        graph_vals,
+                        true);
+    }
+  }
+  addInputPlotResponse(plotting_responses, plot_object);
+}
+
+void
 buildSamplerPlotResponses(MooseServer & moose_server,
                           wasp::DataArray & plotting_responses,
                           FEProblemBase & problem,
@@ -252,6 +295,7 @@ buildSamplerPlotResponses(MooseServer & moose_server,
                       row_indices,
                       column_values[column]);
   addInputPlotResponse(plotting_responses, design_plot);
+  buildMorrisPlotResponse(moose_server, plotting_responses, *sampler_ptr, column_values);
   if (column_values.size() > 1)
   {
     auto scatter_plot = buildInputPlot(plot_title + " paired columns", "column 0", "column 1");

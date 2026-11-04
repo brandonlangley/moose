@@ -43,4 +43,10 @@
     unit_test = StochasticToolsMooseServerTest.PlottingSamplerNestedMonteCarlo
     requirement = 'The system shall preserve outer-loop replication when plotting a nested Monte Carlo input design.'
   []
+
+  [sampler_morris]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingSamplerMorris
+    requirement = 'The system shall plot complete Morris input trajectories using the configured sampler values.'
+  []
 []

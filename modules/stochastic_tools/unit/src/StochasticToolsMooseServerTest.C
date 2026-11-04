@@ -370,3 +370,40 @@ TEST_F(StochasticToolsMooseServerTest, PlottingSamplerNestedMonteCarlo)
   EXPECT_EQ(outer_values[3], outer_values[4]);
   EXPECT_EQ(outer_values[4], outer_values[5]);
 }
+
+TEST_F(StochasticToolsMooseServerTest, PlottingSamplerMorris)
+{
+  // prepare input objects used by the specified plotting extension request
+  ASSERT_TRUE(check_plotting_input(build_plotting_input(R"INPUT(
+[Distributions]
+  [u]
+    type = Uniform
+    lower_bound = 0
+    upper_bound = 1
+  []
+[]
+[Samplers]
+  [design]
+    type = MorrisSampler
+    distributions = 'u u'
+    trajectories = 10
+  []
+[]
+)INPUT")));
+  ASSERT_TRUE(check_plotting_request("type = MorrisSampler"));
+  const auto paths_plot = get_plotting_object("Morris input trajectories");
+  ASSERT_TRUE(paths_plot);
+  ASSERT_EQ(16u, paths_plot->series().size());
+  auto & sampler =
+      moose_server->getCheckApp().actionWarehouse().problemBase()->getSampler("design");
+  for (const auto i : index_range(paths_plot->series()))
+  {
+    const auto & graph_series = paths_plot->series()[i];
+    ASSERT_EQ(3u, graph_series->keys().size());
+    for (const auto j : make_range(3))
+    {
+      EXPECT_DOUBLE_EQ(j, graph_series->keys()[j]);
+      EXPECT_DOUBLE_EQ(sampler.getSample(3 * (i / 2) + j, i % 2), graph_series->values()[j]);
+    }
+  }
+}
