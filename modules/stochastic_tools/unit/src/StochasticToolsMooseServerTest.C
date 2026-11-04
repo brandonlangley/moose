@@ -680,3 +680,28 @@ TEST_F(StochasticToolsMooseServerTest, PlottingDistributionInverseCDF)
       moose_server->getCheckApp().actionWarehouse().problemBase()->getDistribution("kde");
   EXPECT_DOUBLE_EQ(distribution.cdf(distribution.quantile(probabilities[50])), cdf_values[50]);
 }
+
+TEST_F(StochasticToolsMooseServerTest, PlottingDistributionUpperTail)
+{
+  // prepare input objects used by the specified plotting extension request
+  ASSERT_TRUE(check_plotting_input(build_plotting_input(R"INPUT(
+[Distributions]
+  [u]
+    type = Uniform
+    lower_bound = 0
+    upper_bound = 1
+  []
+[]
+)INPUT")));
+  ASSERT_TRUE(check_plotting_request("type = Uniform"));
+  const auto tail_plot = get_plotting_object("input upper tail (1-CDF subtraction)");
+  ASSERT_TRUE(tail_plot);
+  const auto & graph_keys = tail_plot->series()[0]->keys();
+  const auto & graph_vals = tail_plot->series()[0]->values();
+  ASSERT_EQ(201u, graph_keys.size());
+  for (const auto i : index_range(graph_keys))
+    EXPECT_NEAR(1 - graph_keys[i], graph_vals[i], 1e-12);
+  EXPECT_GT(graph_vals.front(), graph_vals.back());
+  EXPECT_EQ(0, tail_plot->y1Axis().rangeMin());
+  EXPECT_EQ(1, tail_plot->y1Axis().rangeMax());
+}

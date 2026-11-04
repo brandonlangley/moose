@@ -610,6 +610,29 @@ buildQuantilePlotResponses(MooseServer & moose_server,
 }
 
 void
+buildTailPlotResponse(MooseServer & moose_server,
+                      wasp::DataArray & plotting_responses,
+                      FEProblemBase & problem,
+                      const std::string & object_name)
+{
+  // subtract returned cumulative probabilities to obtain upper tail values
+  const auto * dist_ptr = getInputPlotObject<Distribution>(problem, object_name, "Distribution");
+  if (!dist_ptr)
+    return;
+  std::vector<double> probabilities, quantiles;
+  getDistributionPlotData(*dist_ptr, probabilities, quantiles);
+  auto graph_vals = getDistributionPlotCDF(*dist_ptr, quantiles);
+  for (auto & cdf_value : graph_vals)
+    cdf_value = 1 - cdf_value;
+  auto plot_object = buildInputPlot(
+      object_name + " input upper tail (1-CDF subtraction)", "input value", "P(X > x) = 1-CDF(x)");
+  addInputPlotCurve(moose_server, plot_object, "1-CDF(x)", quantiles, graph_vals, true);
+  plot_object.y1Axis().rangeMin(0);
+  plot_object.y1Axis().rangeMax(1);
+  addInputPlotResponse(plotting_responses, plot_object);
+}
+
+void
 buildSamplerPlotResponses(MooseServer & moose_server,
                           wasp::DataArray & plotting_responses,
                           FEProblemBase & problem,
@@ -654,4 +677,5 @@ StochasticTools::registerInputPlots()
 {
   MooseServer::registerInputPlotter("Samplers", "input-design", buildSamplerPlotResponses);
   MooseServer::registerInputPlotter("Distributions", "quantiles", buildQuantilePlotResponses);
+  MooseServer::registerInputPlotter("Distributions", "tails", buildTailPlotResponse);
 }

@@ -111,4 +111,11 @@
     requirement = 'The system shall display the actual cumulative probability of approximate distribution quantiles.'
     design = 'syntax/Distributions/index.md'
   []
+
+  [distribution_upper_tail]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingDistributionUpperTail
+    requirement = 'The system shall preview upper-tail probabilities by subtracting the configured cumulative probability from one.'
+    design = 'syntax/Distributions/index.md'
+  []
 []
