@@ -1013,3 +1013,30 @@ TEST_F(StochasticToolsMooseServerTest, PlottingCovarianceComponents)
   EXPECT_TRUE(get_plotting_object("input covariance kernel, output 1"));
 }
 #endif
+
+TEST_F(StochasticToolsMooseServerTest, PlottingParameterStudyInputs)
+{
+  // prepare input objects used by the specified plotting extension request
+  const auto physics_input_path = write_input_file("physics.i", build_plotting_input(R"INPUT(
+[Functions]
+  [load]
+    type = ConstantFunction
+    value = 1
+  []
+[]
+)INPUT"));
+  ASSERT_TRUE(check_plotting_input(R"INPUT(
+[ParameterStudy]
+  input = ')INPUT" + physics_input_path +
+                                   R"INPUT('
+  parameters = 'Functions/load/value'
+  sampling_type = input-matrix
+  input_matrix = '1; 2; 3'
+  output_type = none
+[]
+)INPUT"));
+  ASSERT_TRUE(check_plotting_request("sampling_type = input-matrix"));
+  const auto design_plot = get_plotting_object("input design:");
+  ASSERT_TRUE(design_plot);
+  EXPECT_EQ((std::vector<double>{1, 2, 3}), design_plot->series()[0]->values());
+}

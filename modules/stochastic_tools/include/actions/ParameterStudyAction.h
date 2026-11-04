@@ -29,6 +29,13 @@ public:
   /// Return an enum of available distributions for the study
   static MultiMooseEnum distributionTypes();
 
+  /**
+   * The perscribed name of the sampler created in this action.
+   *
+   * @return SamplerName The name of sampler.
+   */
+  SamplerName samplerName() const { return "study_sampler"; }
+
 protected:
   /**
    * The perscribed name of the distribution. Need this to give the right name to the sampler
@@ -38,13 +45,6 @@ protected:
    */
   DistributionName distributionName(unsigned int count) const;
   std::vector<DistributionName> distributionNames(unsigned int full_count) const;
-
-  /**
-   * The perscribed name of the sampler created in this action.
-   *
-   * @return SamplerName The name of sampler.
-   */
-  SamplerName samplerName() const { return "study_sampler"; }
 
   /**
    * The perscribed name of the multiapp created in this action.

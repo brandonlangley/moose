@@ -17,6 +17,8 @@
 #include "CovarianceFunctionBase.h"
 #include "ConstantReporter.h"
 #include "TheWarehouse.h"
+#include "ParameterStudyAction.h"
+#include "ActionWarehouse.h"
 #include "waspplot/CustomPlotSerialization.h"
 
 #include <algorithm>
@@ -1152,12 +1154,29 @@ buildSamplerPlotResponses(MooseServer & moose_server,
     addInputPlotResponse(plotting_responses, scatter_plot);
   }
 }
+
+void
+buildParameterStudyPlotResponses(MooseServer & moose_server,
+                                 wasp::DataArray & plotting_responses,
+                                 FEProblemBase & problem,
+                                 const std::string &)
+{
+  // find the sampler created by the configured parameter study action type
+  for (const auto * action :
+       problem.getMooseApp().actionWarehouse().getActions<ParameterStudyAction>())
+  {
+    buildSamplerPlotResponses(moose_server, plotting_responses, problem, action->samplerName());
+    break;
+  }
+}
 }
 
 void
 StochasticTools::registerInputPlots()
 {
   MooseServer::registerInputPlotter("Samplers", "input-design", buildSamplerPlotResponses);
+  MooseServer::registerInputPlotter(
+      "ParameterStudy", "input-design", buildParameterStudyPlotResponses);
   MooseServer::registerInputPlotter("Samplers", "sampler-priors", buildPriorPlotResponses);
   MooseServer::registerInputPlotter("Samplers", "initial-proposals", buildProposalPlotResponses);
   MooseServer::registerInputPlotter("Distributions", "quantiles", buildQuantilePlotResponses);

@@ -185,4 +185,11 @@
     requirement = 'The system shall display configured covariance output components in separate input preview panels.'
     design = 'SquaredExponentialCovariance.md LMC.md'
   []
+
+  [parameter_study_inputs]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingParameterStudyInputs
+    requirement = 'The system shall preview the generated input sampler from a ParameterStudy cursor request.'
+    design = 'syntax/ParameterStudy/index.md'
+  []
 []

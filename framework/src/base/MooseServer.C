@@ -1958,10 +1958,15 @@ MooseServer::gatherPlottingResponses(wasp::DataArray & plotting_responses, int l
   wasp::HITNodeView object_context = request_context;
   while (object_context.type() != wasp::OBJECT && object_context.has_parent())
     object_context = object_context.parent();
-  if (object_context.type() != wasp::OBJECT || !object_context.has_parent() ||
-      !object_context.parent().has_parent() || object_context.parent().parent() != view_root)
+  if (object_context.type() != wasp::OBJECT || !object_context.has_parent())
     return true;
-  const std::string & object_section = object_context.parent().name();
+  const bool parameter_study =
+      object_context.name() == "ParameterStudy" && object_context.parent() == view_root;
+  if (!parameter_study &&
+      (!object_context.parent().has_parent() || object_context.parent().parent() != view_root))
+    return true;
+  const std::string object_section =
+      parameter_study ? "ParameterStudy" : object_context.parent().name();
   const std::string & object_name = object_context.name();
   wasp::HITNodeView type_node = object_context.first_child_by_name("type");
   const std::string & object_type =
