@@ -12,6 +12,7 @@
 #include "FEProblemBase.h"
 #include "Sampler.h"
 #include "QuadratureSampler.h"
+#include "TruncatedNormal.h"
 #include "wasplsp/LSP.h"
 #include "waspplot/CustomPlotSerialization.h"
 #include "gtest/gtest.h"
@@ -793,4 +794,90 @@ TEST_F(StochasticToolsMooseServerTest, PlottingSamplerPriors)
   EXPECT_EQ((std::vector<double>{0.25}), prior_plot->series()[1]->keys());
   EXPECT_EQ((std::vector<double>{0.25}), prior_plot->series()[1]->values());
   EXPECT_FALSE(get_plotting_object("input design:"));
+}
+
+TEST_F(StochasticToolsMooseServerTest, PlottingSamplerBoundedProposals)
+{
+  // prepare input objects used by the specified plotting extension request
+  const auto input_config_path = write_input_file("configuration.csv", "configuration\n1\n");
+  ASSERT_TRUE(check_plotting_input(build_plotting_input(R"INPUT(
+[Distributions]
+  [u]
+    type = Uniform
+    lower_bound = -5
+    upper_bound = 5
+  []
+[]
+[Reporters]
+  [seed]
+    type = ConstantReporter
+    real_vector_names = state
+    real_vector_values = '0'
+  []
+[]
+[Samplers]
+  [chain]
+    type = IndependentGaussianMH
+    prior_distributions = u
+    initial_values = 0
+    std_prop = 0.5
+    lower_bound = -1
+    upper_bound = 1
+    seed_inputs = seed/state
+    num_parallel_proposals = 1
+    num_random_seeds = 2
+    file_name = ')INPUT" + input_config_path + R"INPUT('
+  []
+[]
+)INPUT")));
+  ASSERT_TRUE(check_plotting_request("type = IndependentGaussianMH"));
+  const auto proposal_plot = get_plotting_object("initial proposal density: column 0");
+  ASSERT_TRUE(proposal_plot);
+  const auto & graph_keys = proposal_plot->series()[0]->keys();
+  EXPECT_GT(graph_keys.front(), -1);
+  EXPECT_LT(graph_keys.back(), 1);
+  EXPECT_NEAR(0, graph_keys[100], 1e-12);
+  const auto expect_value = TruncatedNormal::pdf(graph_keys[100], 0, 0.5, -1, 1);
+  EXPECT_DOUBLE_EQ(expect_value, proposal_plot->series()[0]->values()[100]);
+}
+
+TEST_F(StochasticToolsMooseServerTest, PlottingSamplerImportanceProposals)
+{
+  // prepare input objects used by the specified plotting extension request
+  ASSERT_TRUE(check_plotting_input(build_plotting_input(R"INPUT(
+[Distributions]
+  [u]
+    type = Uniform
+    lower_bound = 0
+    upper_bound = 1
+  []
+[]
+[Reporters]
+  [seed]
+    type = ConstantReporter
+    real_vector_vector_names = inputs
+    real_vector_vector_values = '0.5'
+  []
+[]
+[Samplers]
+  [ais]
+    type = AdaptiveImportance
+    distributions = u
+    initial_values = 0.5
+    proposal_std = 0.25
+    inputs_reporter = seed/inputs
+    output_limit = 1
+    num_samples_train = 2
+    num_importance_sampling_steps = 2
+    std_factor = 1
+    num_random_seeds = 2
+  []
+[]
+)INPUT")));
+  ASSERT_TRUE(check_plotting_request("type = AdaptiveImportance"));
+  const auto proposal_plot = get_plotting_object("initial proposal density: column 0");
+  ASSERT_TRUE(proposal_plot);
+  EXPECT_EQ("standard-normal coordinate", proposal_plot->x1Axis().label());
+  EXPECT_NEAR(0, proposal_plot->series()[0]->keys()[100], 1e-12);
+  EXPECT_DOUBLE_EQ(Normal::pdf(0, 0, 0.25), proposal_plot->series()[0]->values()[100]);
 }

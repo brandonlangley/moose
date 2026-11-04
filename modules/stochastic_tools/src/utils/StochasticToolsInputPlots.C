@@ -12,6 +12,7 @@
 #include "FEProblemBase.h"
 #include "Sampler.h"
 #include "QuadratureSampler.h"
+#include "TruncatedNormal.h"
 #include "ConstantReporter.h"
 #include "TheWarehouse.h"
 #include "waspplot/CustomPlotSerialization.h"
@@ -850,6 +851,91 @@ buildPriorPlotResponses(MooseServer & moose_server,
 }
 
 void
+buildProposalPlotResponses(MooseServer & moose_server,
+                           wasp::DataArray & plotting_responses,
+                           FEProblemBase & problem,
+                           const std::string & object_name)
+{
+  // use specified initial means and proposal scales for four input columns
+  const auto * sampler_ptr = getInputPlotObject<Sampler>(problem, object_name, "Sampler");
+  if (!sampler_ptr ||
+      (sampler_ptr->type() != "IndependentGaussianMH" &&
+       sampler_ptr->type() != "AdaptiveImportance" && sampler_ptr->type() != "AISActiveLearning"))
+    return;
+  const bool use_standard_normal = sampler_ptr->type() != "IndependentGaussianMH";
+  const auto & initial_values = sampler_ptr->getParam<std::vector<Real>>("initial_values");
+  const auto & std_deviations =
+      sampler_ptr->getParam<std::vector<Real>>(use_standard_normal ? "proposal_std" : "std_prop");
+  if (initial_values.size() != std_deviations.size())
+    throw std::invalid_argument(
+        "Initial proposal means and standard deviations have different sizes");
+  const auto * lower_bounds = !use_standard_normal && sampler_ptr->isParamValid("lower_bound")
+                                  ? &sampler_ptr->getParam<std::vector<Real>>("lower_bound")
+                                  : nullptr;
+  const auto * upper_bounds = !use_standard_normal && sampler_ptr->isParamValid("upper_bound")
+                                  ? &sampler_ptr->getParam<std::vector<Real>>("upper_bound")
+                                  : nullptr;
+  if ((lower_bounds || upper_bounds) &&
+      (!lower_bounds || !upper_bounds || lower_bounds->size() != initial_values.size() ||
+       upper_bounds->size() != initial_values.size()))
+    throw std::invalid_argument("Initial proposal bounds do not match the parameter count");
+  for (const auto column : make_range(std::min<std::size_t>(4, initial_values.size())))
+  {
+    auto proposal_mean = initial_values[column];
+    if (use_standard_normal)
+    {
+      const auto & dist_names =
+          sampler_ptr->getParam<std::vector<DistributionName>>("distributions");
+      if (dist_names.size() != initial_values.size())
+        throw std::invalid_argument("Proposal distributions do not match the initial values");
+      const auto initial_probability =
+          problem.getDistribution(dist_names[column]).cdf(proposal_mean);
+      if (!std::isfinite(initial_probability) || initial_probability <= 0 ||
+          initial_probability >= 1)
+        throw std::invalid_argument("Initial value has no finite standard-normal transform");
+      proposal_mean = Normal::quantile(initial_probability, 0, 1);
+    }
+    if (!std::isfinite(proposal_mean) || !std::isfinite(std_deviations[column]) ||
+        std_deviations[column] <= 0 ||
+        (lower_bounds &&
+         (!std::isfinite((*lower_bounds)[column]) || !std::isfinite((*upper_bounds)[column]) ||
+          (*lower_bounds)[column] >= (*upper_bounds)[column])))
+      throw std::invalid_argument("Initial proposal parameters are invalid");
+    std::vector<double> graph_keys, graph_vals;
+    for (const auto i : make_range(201))
+    {
+      const double probability = 0.001 + 0.998 * i / 200.0;
+      const auto sample_value =
+          lower_bounds ? TruncatedNormal::quantile(probability,
+                                                   proposal_mean,
+                                                   std_deviations[column],
+                                                   (*lower_bounds)[column],
+                                                   (*upper_bounds)[column])
+                       : Normal::quantile(probability, proposal_mean, std_deviations[column]);
+      graph_keys.push_back(sample_value);
+      graph_vals.push_back(lower_bounds
+                               ? TruncatedNormal::pdf(sample_value,
+                                                      proposal_mean,
+                                                      std_deviations[column],
+                                                      (*lower_bounds)[column],
+                                                      (*upper_bounds)[column])
+                               : Normal::pdf(sample_value, proposal_mean, std_deviations[column]));
+    }
+    auto plot_object =
+        buildInputPlot(object_name + " initial proposal density: column " + std::to_string(column),
+                       use_standard_normal ? "standard-normal coordinate" : "parameter value",
+                       "proposal density");
+    addInputPlotCurve(moose_server,
+                      plot_object,
+                      "initial proposal (not the later adapted proposal)",
+                      graph_keys,
+                      graph_vals,
+                      true);
+    addInputPlotResponse(plotting_responses, plot_object);
+  }
+}
+
+void
 buildSamplerPlotResponses(MooseServer & moose_server,
                           wasp::DataArray & plotting_responses,
                           FEProblemBase & problem,
@@ -894,6 +980,7 @@ StochasticTools::registerInputPlots()
 {
   MooseServer::registerInputPlotter("Samplers", "input-design", buildSamplerPlotResponses);
   MooseServer::registerInputPlotter("Samplers", "sampler-priors", buildPriorPlotResponses);
+  MooseServer::registerInputPlotter("Samplers", "initial-proposals", buildProposalPlotResponses);
   MooseServer::registerInputPlotter("Distributions", "quantiles", buildQuantilePlotResponses);
   MooseServer::registerInputPlotter("Distributions", "tails", buildTailPlotResponse);
   MooseServer::registerInputPlotter("Distributions", "log-density", buildLogDensityPlotResponse);

@@ -138,4 +138,16 @@
     unit_test = StochasticToolsMooseServerTest.PlottingSamplerPriors
     requirement = 'The system shall preview configured Bayesian priors and initial values without generating chain samples.'
   []
+
+  [sampler_bounded_proposals]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingSamplerBoundedProposals
+    requirement = 'The system shall preview initial Gaussian proposals using their configured standard deviations and truncation bounds.'
+  []
+
+  [sampler_importance_proposals]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingSamplerImportanceProposals
+    requirement = 'The system shall preview adaptive importance proposals in their configured standard-normal coordinates.'
+  []
 []
