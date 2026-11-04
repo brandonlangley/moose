@@ -199,4 +199,11 @@
     requirement = 'The system shall evaluate the configured reinforcement learning reward for signed input tracking errors.'
     design = 'ScaledAbsDifferenceDRLRewardFunction.md'
   []
+
+  [network_layers]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingNetworkLayers
+    requirement = 'The system shall preview declared hidden-layer widths without training or writing a neural network.'
+    design = 'LibtorchANNTrainer.md'
+  []
 []

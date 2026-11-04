@@ -1077,3 +1077,40 @@ TEST_F(StochasticToolsMooseServerTest, PlottingRewardFunction)
       moose_server->getCheckApp().actionWarehouse().problemBase()->getFunction("reward");
   EXPECT_DOUBLE_EQ(reward_func.value(0, Point()), graph_vals.back());
 }
+
+#ifdef MOOSE_LIBTORCH_ENABLED
+TEST_F(StochasticToolsMooseServerTest, PlottingNetworkLayers)
+{
+  // prepare input objects used by the specified plotting extension request
+  ASSERT_TRUE(check_plotting_input(build_plotting_input(R"INPUT(
+[Reporters]
+  [data]
+    type = ConstantReporter
+    real_names = response
+    real_values = 0
+  []
+[]
+[Samplers]
+  [design]
+    type = InputMatrix
+    matrix = '0; 1; 2'
+  []
+[]
+[Trainers]
+  [network]
+    type = LibtorchANNTrainer
+    sampler = design
+    response = data/response
+    num_neurons_per_layer = '8 4'
+  []
+[]
+)INPUT")));
+  ASSERT_TRUE(check_plotting_request("type = LibtorchANNTrainer"));
+  const auto network_plot = get_plotting_object("declared hidden layers:");
+  ASSERT_TRUE(network_plot);
+  EXPECT_EQ((std::vector<double>{1, 2}), network_plot->series()[0]->keys());
+  EXPECT_EQ((std::vector<double>{8, 4}), network_plot->series()[0]->values());
+  EXPECT_EQ(0, network_plot->y1Axis().rangeMin());
+  EXPECT_FALSE(std::filesystem::exists(test_input_dir / "net.pt"));
+}
+#endif

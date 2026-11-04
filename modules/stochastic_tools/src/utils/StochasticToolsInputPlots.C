@@ -1145,6 +1145,48 @@ buildRewardPlotResponse(MooseServer & moose_server,
 }
 
 void
+buildNetworkPlotResponses(MooseServer & moose_server,
+                          wasp::DataArray & plotting_responses,
+                          FEProblemBase & problem,
+                          const std::string & object_name)
+{
+  // read configured hidden layer widths without creating a trained network
+  const auto * trainer_ptr = getInputPlotObject<MooseObject>(problem, object_name, "UserObject");
+  if (!trainer_ptr || (trainer_ptr->type() != "LibtorchANNTrainer" &&
+                       trainer_ptr->type() != "LibtorchDRLControlTrainer"))
+    return;
+  for (const std::string param_name :
+       {"num_neurons_per_layer", "num_control_neurons_per_layer", "num_critic_neurons_per_layer"})
+  {
+    if (!trainer_ptr->isParamValid(param_name))
+      continue;
+    const auto & layer_widths = trainer_ptr->getParam<std::vector<unsigned int>>(param_name);
+    if (layer_widths.empty())
+      // skip linear networks because no hidden layer widths were specified
+      continue;
+    std::vector<double> graph_keys, graph_vals;
+    // show first sixteen specified layers without inferring trained values
+    for (const auto i : make_range(std::min<std::size_t>(16, layer_widths.size())))
+    {
+      graph_keys.push_back(i + 1);
+      graph_vals.push_back(layer_widths[i]);
+    }
+    auto plot_object = buildInputPlot(object_name + " declared hidden layers: " + param_name +
+                                          " (" + std::to_string(graph_keys.size()) + "/" +
+                                          std::to_string(layer_widths.size()) + ")",
+                                      "hidden layer index (one-based)",
+                                      "configured neurons");
+    addInputPlotCurve(moose_server,
+                      plot_object,
+                      "declared widths (not trained network state)",
+                      graph_keys,
+                      graph_vals);
+    plot_object.y1Axis().rangeMin(0);
+    addInputPlotResponse(plotting_responses, plot_object);
+  }
+}
+
+void
 buildSamplerPlotResponses(MooseServer & moose_server,
                           wasp::DataArray & plotting_responses,
                           FEProblemBase & problem,
@@ -1213,6 +1255,8 @@ StochasticTools::registerInputPlots()
   MooseServer::registerInputPlotter("Distributions", "comparison", buildComparisonPlotResponses);
   MooseServer::registerInputPlotter("Likelihood", "observations", buildLikelihoodPlotResponses);
   MooseServer::registerInputPlotter("Functions", "reward-shape", buildRewardPlotResponse);
+  MooseServer::registerInputPlotter("Trainers", "network-inputs", buildNetworkPlotResponses);
+  MooseServer::registerInputPlotter("UserObjects", "network-inputs", buildNetworkPlotResponses);
 #ifdef MOOSE_LIBTORCH_ENABLED
   MooseServer::registerInputPlotter("Covariance", "kernels", buildCovariancePlotResponses);
 #endif
