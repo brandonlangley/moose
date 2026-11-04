@@ -24,6 +24,12 @@ public:
 
   virtual Real function(const std::vector<Real> & x) const override;
 
+  /// Return observations provided inline or read from the input data file.
+  const std::vector<Real> & getExperimentalValues() const { return _exp_values; }
+
+  /// Return the configured noise, which may await Reporter initialization.
+  Real getNoise() const { return _noise; }
+
   /**
    * Return the probability density function
    * @param exp The experimental measurement

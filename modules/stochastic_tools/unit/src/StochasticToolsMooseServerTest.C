@@ -881,3 +881,86 @@ TEST_F(StochasticToolsMooseServerTest, PlottingSamplerImportanceProposals)
   EXPECT_NEAR(0, proposal_plot->series()[0]->keys()[100], 1e-12);
   EXPECT_DOUBLE_EQ(Normal::pdf(0, 0, 0.25), proposal_plot->series()[0]->values()[100]);
 }
+
+TEST_F(StochasticToolsMooseServerTest, PlottingLikelihoodGaussian)
+{
+  // prepare input objects used by the specified plotting extension request
+  ASSERT_TRUE(check_plotting_input(build_plotting_input(R"INPUT(
+[Reporters]
+  [noise]
+    type = ConstantReporter
+    real_names = sigma
+    real_values = 0.5
+  []
+[]
+[Likelihood]
+  [observation]
+    type = Gaussian
+    noise = noise/sigma
+    exp_values = '1 2'
+  []
+[]
+)INPUT")));
+  ASSERT_TRUE(check_plotting_request("type = Gaussian"));
+  const auto observation_values = get_plotting_object("input likelihood observations");
+  const auto score_plot = get_plotting_object("configured residual score");
+  ASSERT_TRUE(observation_values);
+  ASSERT_TRUE(score_plot);
+  EXPECT_EQ((std::vector<double>{1, 2}), observation_values->series()[0]->values());
+  const auto & graph_vals = score_plot->series()[0]->values();
+  ASSERT_EQ(101u, graph_vals.size());
+  // check two three-sigma residuals reduce Gaussian log likelihood by nine
+  EXPECT_NEAR(-9, graph_vals.front() - graph_vals[50], 1e-12);
+  EXPECT_EQ("log likelihood", score_plot->y1Axis().label());
+}
+
+TEST_F(StochasticToolsMooseServerTest, PlottingLikelihoodLinearSum)
+{
+  // prepare input objects used by the specified plotting extension request
+  ASSERT_TRUE(check_plotting_input(build_plotting_input(R"INPUT(
+[Reporters]
+  [noise]
+    type = ConstantReporter
+    real_names = sigma
+    real_values = 2
+  []
+[]
+[Likelihood]
+  [observation]
+    type = LinearSum
+    noise = noise/sigma
+    exp_values = '1 2'
+  []
+[]
+)INPUT")));
+  ASSERT_TRUE(check_plotting_request("type = LinearSum"));
+  const auto score_plot = get_plotting_object("configured residual score");
+  ASSERT_TRUE(score_plot);
+  EXPECT_NEAR(18, score_plot->series()[0]->values().front(), 1e-12);
+  EXPECT_NEAR(0, score_plot->series()[0]->values()[50], 1e-12);
+  EXPECT_EQ("scaled squared error", score_plot->y1Axis().label());
+}
+
+TEST_F(StochasticToolsMooseServerTest, PlottingLikelihoodObservations)
+{
+  // prepare input objects used by the specified plotting extension request
+  ASSERT_TRUE(check_plotting_input(build_plotting_input(R"INPUT(
+[Reporters]
+  [noise]
+    type = ConstantReporter
+    real_names = sigma
+    real_values = 0
+  []
+[]
+[Likelihood]
+  [observation]
+    type = Gaussian
+    noise = noise/sigma
+    exp_values = '1 2'
+  []
+[]
+)INPUT")));
+  ASSERT_TRUE(check_plotting_request("type = Gaussian"));
+  EXPECT_TRUE(get_plotting_object("input likelihood observations"));
+  EXPECT_FALSE(get_plotting_object("configured residual score"));
+}

@@ -150,4 +150,25 @@
     unit_test = StochasticToolsMooseServerTest.PlottingSamplerImportanceProposals
     requirement = 'The system shall preview adaptive importance proposals in their configured standard-normal coordinates.'
   []
+
+  [likelihood_gaussian]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingLikelihoodGaussian
+    requirement = 'The system shall plot likelihood observations and evaluate the configured Gaussian residual score.'
+    design = 'Gaussian.md'
+  []
+
+  [likelihood_linear_sum]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingLikelihoodLinearSum
+    requirement = 'The system shall use inherited observation and noise parameters when previewing a LinearSum likelihood.'
+    design = 'Gaussian.md'
+  []
+
+  [likelihood_observations]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingLikelihoodObservations
+    requirement = 'The system shall retain likelihood input observations when positive initialized noise is unavailable.'
+    design = 'Gaussian.md'
+  []
 []

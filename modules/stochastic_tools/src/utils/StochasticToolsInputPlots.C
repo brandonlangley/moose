@@ -13,6 +13,7 @@
 #include "Sampler.h"
 #include "QuadratureSampler.h"
 #include "TruncatedNormal.h"
+#include "Gaussian.h"
 #include "ConstantReporter.h"
 #include "TheWarehouse.h"
 #include "waspplot/CustomPlotSerialization.h"
@@ -936,6 +937,69 @@ buildProposalPlotResponses(MooseServer & moose_server,
 }
 
 void
+buildLikelihoodPlotResponses(MooseServer & moose_server,
+                             wasp::DataArray & plotting_responses,
+                             FEProblemBase & problem,
+                             const std::string & object_name)
+{
+  // show at most 2000 configured observations including the two input ends
+  const auto * likelihood_ptr =
+      getInputPlotObject<Gaussian>(problem, object_name, "LikelihoodFunctionBase");
+  if (!likelihood_ptr)
+    return;
+  const auto & observation_values = likelihood_ptr->getExperimentalValues();
+  if (observation_values.empty())
+    return;
+  std::vector<double> graph_keys, graph_vals;
+  const auto num_points = std::min<std::size_t>(2000, observation_values.size());
+  for (const auto i : make_range(num_points))
+  {
+    const auto sample_row =
+        num_points == 1
+            ? 0
+            : ((observation_values.size() - 1) / (num_points - 1)) * i +
+                  ((observation_values.size() - 1) % (num_points - 1)) * i / (num_points - 1);
+    graph_keys.push_back(sample_row);
+    graph_vals.push_back(observation_values[sample_row]);
+  }
+  auto observations_plot =
+      buildInputPlot(object_name + " input likelihood observations (" + std::to_string(num_points) +
+                         "/" + std::to_string(observation_values.size()) + ")",
+                     "observation index",
+                     "observed value");
+  addInputPlotCurve(
+      moose_server, observations_plot, "configured observations", graph_keys, graph_vals);
+  addInputPlotResponse(plotting_responses, observations_plot);
+  const auto noise_value = likelihood_ptr->getNoise();
+  // limit a 101-point three-sigma score sweep to at most 1000 observations
+  if (!std::isfinite(noise_value) || noise_value <= 0 || observation_values.size() > 1000)
+    return;
+  std::vector<double> offset_values, score_values;
+  auto model_values = observation_values;
+  for (const auto i : make_range(101))
+  {
+    const auto value_offset = noise_value * (-3 + 6 * i / 100.0);
+    for (const auto j : index_range(model_values))
+      model_values[j] = observation_values[j] + value_offset;
+    offset_values.push_back(value_offset);
+    score_values.push_back(likelihood_ptr->function(model_values));
+  }
+  const auto y_axis_label = likelihood_ptr->type() == "LinearSum" ? "scaled squared error"
+                            : likelihood_ptr->getParam<bool>("log_likelihood") ? "log likelihood"
+                                                                               : "likelihood";
+  auto profile_plot = buildInputPlot(object_name + " configured residual score",
+                                     "common model-minus-observation offset",
+                                     y_axis_label);
+  addInputPlotCurve(moose_server,
+                    profile_plot,
+                    "all observations shifted by the same offset",
+                    offset_values,
+                    score_values,
+                    true);
+  addInputPlotResponse(plotting_responses, profile_plot);
+}
+
+void
 buildSamplerPlotResponses(MooseServer & moose_server,
                           wasp::DataArray & plotting_responses,
                           FEProblemBase & problem,
@@ -985,4 +1049,5 @@ StochasticTools::registerInputPlots()
   MooseServer::registerInputPlotter("Distributions", "tails", buildTailPlotResponse);
   MooseServer::registerInputPlotter("Distributions", "log-density", buildLogDensityPlotResponse);
   MooseServer::registerInputPlotter("Distributions", "comparison", buildComparisonPlotResponses);
+  MooseServer::registerInputPlotter("Likelihood", "observations", buildLikelihoodPlotResponses);
 }

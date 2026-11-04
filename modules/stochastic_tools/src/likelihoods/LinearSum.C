@@ -14,7 +14,7 @@ registerMooseObject("StochasticToolsApp", LinearSum);
 InputParameters
 LinearSum::validParams()
 {
-  InputParameters params = LikelihoodFunctionBase::validParams();
+  InputParameters params = Gaussian::validParams();
   params.addClassDescription(
       "LinearSum function evaluating the model goodness against experiments.");
   return params;
