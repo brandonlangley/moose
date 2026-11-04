@@ -14,6 +14,7 @@
 #include "QuadratureSampler.h"
 #include "TruncatedNormal.h"
 #include "Gaussian.h"
+#include "ScaledAbsDifferenceDRLRewardFunction.h"
 #include "CovarianceFunctionBase.h"
 #include "ConstantReporter.h"
 #include "TheWarehouse.h"
@@ -1117,6 +1118,33 @@ buildCovariancePlotResponses(MooseServer & moose_server,
 #endif
 
 void
+buildRewardPlotResponse(MooseServer & moose_server,
+                        wasp::DataArray & plotting_responses,
+                        FEProblemBase & problem,
+                        const std::string & object_name)
+{
+  // get the configured reward function without running its control process
+  if (!problem.hasFunction(object_name))
+    return;
+  const auto * reward_func =
+      dynamic_cast<const ScaledAbsDifferenceDRLRewardFunction *>(&problem.getFunction(object_name));
+  if (!reward_func)
+    return;
+  std::vector<double> graph_keys, graph_vals;
+  // sample 201 signed errors on a unit interval to illustrate reward curve
+  for (const auto i : make_range(201))
+  {
+    graph_keys.push_back(-1 + 2 * i / 200.0);
+    graph_vals.push_back(reward_func->computeReward(graph_keys.back()));
+  }
+  auto plot_object = buildInputPlot(
+      object_name + " input reward shape (unit error interval)", "signed tracking error", "reward");
+  addInputPlotCurve(
+      moose_server, plot_object, "configured reward rule", graph_keys, graph_vals, true);
+  addInputPlotResponse(plotting_responses, plot_object);
+}
+
+void
 buildSamplerPlotResponses(MooseServer & moose_server,
                           wasp::DataArray & plotting_responses,
                           FEProblemBase & problem,
@@ -1184,6 +1212,7 @@ StochasticTools::registerInputPlots()
   MooseServer::registerInputPlotter("Distributions", "log-density", buildLogDensityPlotResponse);
   MooseServer::registerInputPlotter("Distributions", "comparison", buildComparisonPlotResponses);
   MooseServer::registerInputPlotter("Likelihood", "observations", buildLikelihoodPlotResponses);
+  MooseServer::registerInputPlotter("Functions", "reward-shape", buildRewardPlotResponse);
 #ifdef MOOSE_LIBTORCH_ENABLED
   MooseServer::registerInputPlotter("Covariance", "kernels", buildCovariancePlotResponses);
 #endif

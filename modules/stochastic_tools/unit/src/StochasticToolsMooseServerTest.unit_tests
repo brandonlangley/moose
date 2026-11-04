@@ -192,4 +192,11 @@
     requirement = 'The system shall preview the generated input sampler from a ParameterStudy cursor request.'
     design = 'syntax/ParameterStudy/index.md'
   []
+
+  [reward_function]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingRewardFunction
+    requirement = 'The system shall evaluate the configured reinforcement learning reward for signed input tracking errors.'
+    design = 'ScaledAbsDifferenceDRLRewardFunction.md'
+  []
 []

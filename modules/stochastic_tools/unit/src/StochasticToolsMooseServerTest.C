@@ -11,6 +11,7 @@
 #include "Moose.h"
 #include "FEProblemBase.h"
 #include "Sampler.h"
+#include "Function.h"
 #include "QuadratureSampler.h"
 #include "TruncatedNormal.h"
 #include "wasplsp/LSP.h"
@@ -1039,4 +1040,40 @@ TEST_F(StochasticToolsMooseServerTest, PlottingParameterStudyInputs)
   const auto design_plot = get_plotting_object("input design:");
   ASSERT_TRUE(design_plot);
   EXPECT_EQ((std::vector<double>{1, 2, 3}), design_plot->series()[0]->values());
+}
+
+TEST_F(StochasticToolsMooseServerTest, PlottingRewardFunction)
+{
+  // prepare input objects used by the specified plotting extension request
+  ASSERT_TRUE(check_plotting_input(build_plotting_input(R"INPUT(
+[Postprocessors]
+  [observed]
+    type = ConstantPostprocessor
+    value = 0
+  []
+[]
+[Functions]
+  [target]
+    type = ConstantFunction
+    value = 1
+  []
+  [reward]
+    type = ScaledAbsDifferenceDRLRewardFunction
+    design_function = target
+    observed_value = observed
+    c1 = 2
+    c2 = 3
+  []
+[]
+)INPUT")));
+  ASSERT_TRUE(check_plotting_request("type = ScaledAbsDifferenceDRLRewardFunction"));
+  const auto reward_plot = get_plotting_object("input reward shape");
+  ASSERT_TRUE(reward_plot);
+  const auto & graph_vals = reward_plot->series()[0]->values();
+  EXPECT_DOUBLE_EQ(1, graph_vals.front());
+  EXPECT_DOUBLE_EQ(3, graph_vals[100]);
+  EXPECT_DOUBLE_EQ(1, graph_vals.back());
+  auto & reward_func =
+      moose_server->getCheckApp().actionWarehouse().problemBase()->getFunction("reward");
+  EXPECT_DOUBLE_EQ(reward_func.value(0, Point()), graph_vals.back());
 }

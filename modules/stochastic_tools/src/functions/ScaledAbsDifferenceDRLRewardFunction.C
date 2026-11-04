@@ -45,7 +45,13 @@ Real
 ScaledAbsDifferenceDRLRewardFunction::value(Real t, const Point & p) const
 {
   Real design_value = _design_function.value(t, p);
-  return -_c1 * std::abs(design_value - _observed_value) + _c2;
+  return computeReward(design_value - _observed_value);
+}
+
+Real
+ScaledAbsDifferenceDRLRewardFunction::computeReward(Real difference) const
+{
+  return -_c1 * std::abs(difference) + _c2;
 }
 
 ADReal

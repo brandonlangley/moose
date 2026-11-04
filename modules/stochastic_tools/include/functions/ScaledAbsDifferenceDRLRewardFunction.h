@@ -20,6 +20,9 @@ public:
 
   ScaledAbsDifferenceDRLRewardFunction(const InputParameters & parameters);
 
+  /// Evaluate the specified reward rule for a provided signed error value.
+  Real computeReward(Real difference) const;
+
   virtual Real value(Real t, const Point & p) const override;
   virtual ADReal value(const ADReal & t, const ADPoint & p) const override;
 
