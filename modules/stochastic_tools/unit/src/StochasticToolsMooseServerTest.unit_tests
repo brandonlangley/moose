@@ -97,4 +97,18 @@
     unit_test = StochasticToolsMooseServerTest.PlottingSamplerConstantCorrelations
     requirement = 'The system shall treat correlation with a constant input column as undefined despite rounding.'
   []
+
+  [distribution_quantiles]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingDistributionQuantiles
+    requirement = 'The system shall preview distribution quantiles, the median, and the actual probability mass between interval endpoints.'
+    design = 'syntax/Distributions/index.md'
+  []
+
+  [distribution_inversecdf]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingDistributionInverseCDF
+    requirement = 'The system shall display the actual cumulative probability of approximate distribution quantiles.'
+    design = 'syntax/Distributions/index.md'
+  []
 []

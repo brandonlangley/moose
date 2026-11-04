@@ -627,3 +627,56 @@ TEST_F(StochasticToolsMooseServerTest, PlottingSamplerConstantCorrelations)
   ASSERT_TRUE(check_plotting_request("type = InputMatrix"));
   EXPECT_FALSE(get_plotting_object("displayed input correlations"));
 }
+
+TEST_F(StochasticToolsMooseServerTest, PlottingDistributionQuantiles)
+{
+  // prepare input objects used by the specified plotting extension request
+  ASSERT_TRUE(check_plotting_input(build_plotting_input(R"INPUT(
+[Distributions]
+  [u]
+    type = Uniform
+    lower_bound = 1
+    upper_bound = 5
+  []
+[]
+)INPUT")));
+  ASSERT_TRUE(check_plotting_request("type = Uniform"));
+  const auto quantile_plot = get_plotting_object("input quantiles and interval endpoints");
+  ASSERT_TRUE(quantile_plot);
+  ASSERT_EQ(4u, quantile_plot->series().size());
+  EXPECT_DOUBLE_EQ(3, quantile_plot->series()[1]->values()[0]);
+  EXPECT_NEAR(1.1, quantile_plot->series()[3]->values()[0], 1e-12);
+  EXPECT_NEAR(4.9, quantile_plot->series()[3]->values()[1], 1e-12);
+  EXPECT_NE(std::string::npos, quantile_plot->series()[3]->name().find("CDF mass=0.950000"));
+  const auto inverse_plot = get_plotting_object("input inverse-CDF check");
+  ASSERT_TRUE(inverse_plot);
+  const auto & probability_values = inverse_plot->series()[0]->keys();
+  for (const auto i : index_range(probability_values))
+    EXPECT_NEAR(probability_values[i], inverse_plot->series()[0]->values()[i], 1e-12);
+}
+
+TEST_F(StochasticToolsMooseServerTest, PlottingDistributionInverseCDF)
+{
+  // prepare input objects used by the specified plotting extension request
+  ASSERT_TRUE(check_plotting_input(build_plotting_input(R"INPUT(
+[Distributions]
+  [kde]
+    type = KernelDensity1D
+    data = '-3 3'
+    bandwidth_rule = userdefined
+    bandwidth = 0.1
+    kernel_function = gaussian
+  []
+[]
+)INPUT")));
+  ASSERT_TRUE(check_plotting_request("type = KernelDensity1D"));
+  const auto inverse_plot = get_plotting_object("input inverse-CDF check");
+  ASSERT_TRUE(inverse_plot);
+  const auto & probabilities = inverse_plot->series()[0]->keys();
+  const auto & cdf_values = inverse_plot->series()[0]->values();
+  // check the approximate quantiles against their actual cumulative values
+  EXPECT_GT(std::abs(cdf_values[50] - probabilities[50]), 0.05);
+  auto & distribution =
+      moose_server->getCheckApp().actionWarehouse().problemBase()->getDistribution("kde");
+  EXPECT_DOUBLE_EQ(distribution.cdf(distribution.quantile(probabilities[50])), cdf_values[50]);
+}

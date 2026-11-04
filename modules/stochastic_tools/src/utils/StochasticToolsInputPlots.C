@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include <limits>
 
 namespace
 {
@@ -526,6 +527,89 @@ buildCorrelationPlotResponse(MooseServer & moose_server,
 }
 
 void
+getDistributionPlotData(const Distribution & dist,
+                        std::vector<double> & probabilities,
+                        std::vector<double> & quantiles)
+{
+  // use 201 nodes from 0.1 to 99.9 percent to omit tails and retain median
+  for (const auto i : make_range(201))
+  {
+    probabilities.push_back(0.001 + 0.998 * i / 200.0);
+    quantiles.push_back(dist.quantile(probabilities.back()));
+    if (!std::isfinite(quantiles.back()) ||
+        (quantiles.size() > 1 && quantiles.back() < quantiles[quantiles.size() - 2]))
+      throw std::invalid_argument("Input quantile preview contains nonfinite or decreasing values");
+  }
+}
+
+std::vector<double>
+getDistributionPlotCDF(const Distribution & dist, const std::vector<double> & quantiles)
+{
+  std::vector<double> probabilities;
+  // allow 64 epsilon rounding as in the usual CDF probability range checks
+  const auto cdf_tolerance = 64 * std::numeric_limits<double>::epsilon();
+  for (const auto quantile_value : quantiles)
+  {
+    const auto cdf_value = dist.cdf(quantile_value);
+    if (!std::isfinite(cdf_value) || cdf_value < -cdf_tolerance || cdf_value > 1 + cdf_tolerance ||
+        (!probabilities.empty() && cdf_value + cdf_tolerance < probabilities.back()))
+      throw std::invalid_argument("Input CDF preview contains invalid probabilities");
+    probabilities.push_back(std::clamp(cdf_value, 0.0, 1.0));
+  }
+  return probabilities;
+}
+
+void
+buildQuantilePlotResponses(MooseServer & moose_server,
+                           wasp::DataArray & plotting_responses,
+                           FEProblemBase & problem,
+                           const std::string & object_name)
+{
+  // evaluate input quantiles and mark the median and probability intervals
+  const auto * dist_ptr = getInputPlotObject<Distribution>(problem, object_name, "Distribution");
+  if (!dist_ptr)
+    return;
+  std::vector<double> probabilities, quantiles;
+  getDistributionPlotData(*dist_ptr, probabilities, quantiles);
+  auto plot_object = buildInputPlot(
+      object_name + " input quantiles and interval endpoints", "probability", "returned quantile");
+  addInputPlotCurve(moose_server, plot_object, "Q(p)", probabilities, quantiles, true);
+  addInputPlotCurve(moose_server, plot_object, "median", {0.5}, {dist_ptr->quantile(0.5)});
+  for (const auto tail_probability : {0.25, 0.025})
+  {
+    const std::vector<double> interval_values = {dist_ptr->quantile(tail_probability),
+                                                 dist_ptr->quantile(1 - tail_probability)};
+    std::string series_name = std::to_string(tail_probability) + " to " +
+                              std::to_string(1 - tail_probability) + " quantiles";
+    try
+    {
+      const auto cdf_values = getDistributionPlotCDF(*dist_ptr, interval_values);
+      series_name += "; CDF mass=" + std::to_string(cdf_values[1] - cdf_values[0]);
+    }
+    catch (const std::exception &)
+    {
+      series_name += "; CDF mass unavailable";
+    }
+    addInputPlotCurve(moose_server,
+                      plot_object,
+                      series_name,
+                      {tail_probability, 1 - tail_probability},
+                      interval_values);
+  }
+  addInputPlotResponse(plotting_responses, plot_object);
+  // keep the quantile plot if cumulative probabilities cannot be evaluated
+  const auto cdf_values = getDistributionPlotCDF(*dist_ptr, quantiles);
+  auto inverse_plot = buildInputPlot(
+      object_name + " input inverse-CDF check", "requested probability p", "CDF(Q(p))");
+  addInputPlotCurve(moose_server, inverse_plot, "CDF(Q(p))", probabilities, cdf_values, true);
+  addInputPlotCurve(
+      moose_server, inverse_plot, "identity reference", probabilities, probabilities, true);
+  inverse_plot.y1Axis().rangeMin(0);
+  inverse_plot.y1Axis().rangeMax(1);
+  addInputPlotResponse(plotting_responses, inverse_plot);
+}
+
+void
 buildSamplerPlotResponses(MooseServer & moose_server,
                           wasp::DataArray & plotting_responses,
                           FEProblemBase & problem,
@@ -569,4 +653,5 @@ void
 StochasticTools::registerInputPlots()
 {
   MooseServer::registerInputPlotter("Samplers", "input-design", buildSamplerPlotResponses);
+  MooseServer::registerInputPlotter("Distributions", "quantiles", buildQuantilePlotResponses);
 }
