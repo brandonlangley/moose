@@ -14,6 +14,7 @@
 #include "QuadratureSampler.h"
 #include "TruncatedNormal.h"
 #include "Gaussian.h"
+#include "CovarianceFunctionBase.h"
 #include "ConstantReporter.h"
 #include "TheWarehouse.h"
 #include "waspplot/CustomPlotSerialization.h"
@@ -999,6 +1000,120 @@ buildLikelihoodPlotResponses(MooseServer & moose_server,
   addInputPlotResponse(plotting_responses, profile_plot);
 }
 
+#ifdef MOOSE_LIBTORCH_ENABLED
+void
+buildCovariancePlotResponses(MooseServer & moose_server,
+                             wasp::DataArray & plotting_responses,
+                             FEProblemBase & problem,
+                             const std::string & object_name)
+{
+  // bound the kernel work to eight outputs and sixty-four input dimensions
+  const auto * covariance_ptr =
+      getInputPlotObject<CovarianceFunctionBase>(problem, object_name, "CovarianceFunction");
+  if (!covariance_ptr)
+    return;
+  const auto num_outputs = covariance_ptr->getParam<unsigned int>("num_outputs");
+  if (!num_outputs || num_outputs > 8)
+    return;
+  const CovarianceFunctionBase * coordinate_kernel = nullptr;
+  std::vector<const CovarianceFunctionBase *> kernel_objects = {covariance_ptr};
+  for (std::size_t i = 0; i < kernel_objects.size(); ++i)
+  {
+    const auto * kernel_ptr = kernel_objects[i];
+    if (kernel_objects.size() > 9 || (i && kernel_ptr->type() == "LMC"))
+      // bound composition to one LMC kernel and up to eight scalar kernels
+      return;
+    if (kernel_ptr->isParamValid("length_factor"))
+    {
+      if (!coordinate_kernel)
+        coordinate_kernel = kernel_ptr;
+      const auto & length_factors = kernel_ptr->getParam<std::vector<Real>>("length_factor");
+      if (length_factors.empty() || length_factors.size() > 64 ||
+          !std::all_of(length_factors.begin(),
+                       length_factors.end(),
+                       [](Real x) { return std::isfinite(x) && x > 0; }))
+        return;
+      for (const std::string parameter : {"signal_variance", "noise_variance"})
+        if (kernel_ptr->isParamValid(parameter) &&
+            (!std::isfinite(kernel_ptr->getParam<Real>(parameter)) ||
+             kernel_ptr->getParam<Real>(parameter) < 0))
+          return;
+      if (kernel_ptr->isParamValid("p") && kernel_ptr->getParam<unsigned int>("p") > 8)
+        return;
+    }
+    const auto & kernel_names = kernel_ptr->dependentCovarianceNames();
+    if (kernel_ptr->type() == "LMC" &&
+        kernel_ptr->getParam<unsigned int>("num_latent_funcs") > kernel_names.size())
+      return;
+    for (const auto & kernel_name : kernel_names)
+    {
+      const auto * child_kernel =
+          getInputPlotObject<CovarianceFunctionBase>(problem, kernel_name, "CovarianceFunction");
+      if (!child_kernel || child_kernel->getParam<unsigned int>("num_outputs") != 1)
+        return;
+      kernel_objects.push_back(child_kernel);
+    }
+  }
+  if (!coordinate_kernel)
+    return;
+  const auto & length_factors = coordinate_kernel->getParam<std::vector<Real>>("length_factor");
+  // sample 101 lags within three length factors without fitting the kernel
+  constexpr int64_t num_points = 101;
+  const auto num_dimensions = static_cast<int64_t>(length_factors.size());
+  const auto tensor_options = torch::TensorOptions().dtype(at::kDouble);
+  const auto origin_values = torch::zeros({1, num_dimensions}, tensor_options);
+  torch::Tensor self_covariance;
+  covariance_ptr->computeCovarianceMatrix(self_covariance, origin_values, origin_values, true);
+  self_covariance = self_covariance.contiguous();
+  if (self_covariance.dim() != 2 || self_covariance.size(0) != num_outputs ||
+      self_covariance.size(1) != num_outputs)
+    throw std::invalid_argument("Unexpected configured self-covariance dimensions");
+  for (const auto output_component : make_range(std::min(2u, num_outputs)))
+  {
+    auto plot_object = buildInputPlot(object_name + " input covariance kernel, output " +
+                                          std::to_string(output_component),
+                                      "coordinate displacement (input units)",
+                                      "configured covariance");
+    for (const auto coordinate : make_range(std::min<std::size_t>(4, length_factors.size())))
+    {
+      auto input_values = torch::zeros({num_points, num_dimensions}, tensor_options);
+      auto tensor_values = input_values.accessor<Real, 2>();
+      std::vector<double> graph_keys;
+      for (const auto i : make_range(num_points))
+      {
+        graph_keys.push_back(3 * length_factors[coordinate] * i / double(num_points - 1));
+        tensor_values[i][coordinate] = graph_keys.back();
+      }
+      torch::Tensor covariance_values;
+      covariance_ptr->computeCovarianceMatrix(
+          covariance_values, input_values, origin_values, false);
+      covariance_values = covariance_values.contiguous();
+      if (covariance_values.dim() != 2 || covariance_values.size(0) != num_points * num_outputs ||
+          covariance_values.size(1) != num_outputs)
+        throw std::invalid_argument("Unexpected configured covariance dimensions");
+      const auto * covariance_data = covariance_values.data_ptr<Real>();
+      std::vector<double> graph_vals;
+      for (const auto i : make_range(num_points))
+        graph_vals.push_back(
+            covariance_data[(output_component * num_points + i) * num_outputs + output_component]);
+      addInputPlotCurve(moose_server,
+                        plot_object,
+                        "coordinate " + std::to_string(coordinate),
+                        graph_keys,
+                        graph_vals,
+                        true);
+    }
+    addInputPlotCurve(
+        moose_server,
+        plot_object,
+        "self covariance including diagonal noise",
+        {0},
+        {self_covariance.data_ptr<Real>()[output_component * num_outputs + output_component]});
+    addInputPlotResponse(plotting_responses, plot_object);
+  }
+}
+#endif
+
 void
 buildSamplerPlotResponses(MooseServer & moose_server,
                           wasp::DataArray & plotting_responses,
@@ -1050,4 +1165,7 @@ StochasticTools::registerInputPlots()
   MooseServer::registerInputPlotter("Distributions", "log-density", buildLogDensityPlotResponse);
   MooseServer::registerInputPlotter("Distributions", "comparison", buildComparisonPlotResponses);
   MooseServer::registerInputPlotter("Likelihood", "observations", buildLikelihoodPlotResponses);
+#ifdef MOOSE_LIBTORCH_ENABLED
+  MooseServer::registerInputPlotter("Covariance", "kernels", buildCovariancePlotResponses);
+#endif
 }

@@ -171,4 +171,18 @@
     requirement = 'The system shall retain likelihood input observations when positive initialized noise is unavailable.'
     design = 'Gaussian.md'
   []
+
+  [covariance_kernel]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingCovarianceKernel
+    requirement = 'The system shall evaluate configured covariance kernels and retain a self-covariance marker including diagonal noise.'
+    design = 'SquaredExponentialCovariance.md LMC.md'
+  []
+
+  [covariance_components]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingCovarianceComponents
+    requirement = 'The system shall display configured covariance output components in separate input preview panels.'
+    design = 'SquaredExponentialCovariance.md LMC.md'
+  []
 []

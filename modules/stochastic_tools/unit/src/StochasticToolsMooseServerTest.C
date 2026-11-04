@@ -964,3 +964,52 @@ TEST_F(StochasticToolsMooseServerTest, PlottingLikelihoodObservations)
   EXPECT_TRUE(get_plotting_object("input likelihood observations"));
   EXPECT_FALSE(get_plotting_object("configured residual score"));
 }
+
+#ifdef MOOSE_LIBTORCH_ENABLED
+TEST_F(StochasticToolsMooseServerTest, PlottingCovarianceKernel)
+{
+  // prepare input objects used by the specified plotting extension request
+  ASSERT_TRUE(check_plotting_input(build_plotting_input(R"INPUT(
+[Covariance]
+  [kernel]
+    type = SquaredExponentialCovariance
+    length_factor = 1
+    signal_variance = 2
+    noise_variance = 0.25
+  []
+[]
+)INPUT")));
+  ASSERT_TRUE(check_plotting_request("type = SquaredExponentialCovariance"));
+  const auto kernel_plot = get_plotting_object("input covariance kernel, output 0");
+  ASSERT_TRUE(kernel_plot);
+  ASSERT_EQ(2u, kernel_plot->series().size());
+  EXPECT_DOUBLE_EQ(2, kernel_plot->series()[0]->values().front());
+  // test three length scales give the squared-exponential factor exp(-4.5)
+  EXPECT_NEAR(2 * std::exp(-4.5), kernel_plot->series()[0]->values().back(), 1e-12);
+  EXPECT_DOUBLE_EQ(2.25, kernel_plot->series()[1]->values()[0]);
+}
+
+TEST_F(StochasticToolsMooseServerTest, PlottingCovarianceComponents)
+{
+  // prepare input objects used by the specified plotting extension request
+  ASSERT_TRUE(check_plotting_input(build_plotting_input(R"INPUT(
+[Covariance]
+  [base]
+    type = MaternHalfIntCovariance
+    length_factor = 1
+    signal_variance = 2
+    p = 1
+  []
+  [kernel]
+    type = LMC
+    num_outputs = 2
+    num_latent_funcs = 1
+    covariance_functions = base
+  []
+[]
+)INPUT")));
+  ASSERT_TRUE(check_plotting_request("type = LMC"));
+  EXPECT_TRUE(get_plotting_object("input covariance kernel, output 0"));
+  EXPECT_TRUE(get_plotting_object("input covariance kernel, output 1"));
+}
+#endif
