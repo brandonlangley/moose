@@ -61,4 +61,10 @@
     unit_test = StochasticToolsMooseServerTest.PlottingSamplerSobolResampling
     requirement = 'The system shall include complementary Sobol hybrid blocks when resampling is enabled.'
   []
+
+  [sampler_quadrature_weights]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingSamplerQuadratureWeights
+    requirement = 'The system shall preserve signed, unnormalized quadrature weights in input previews.'
+  []
 []

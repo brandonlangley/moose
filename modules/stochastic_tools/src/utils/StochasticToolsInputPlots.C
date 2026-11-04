@@ -11,6 +11,7 @@
 #include "MooseServer.h"
 #include "FEProblemBase.h"
 #include "Sampler.h"
+#include "QuadratureSampler.h"
 #include "ConstantReporter.h"
 #include "TheWarehouse.h"
 #include "waspplot/CustomPlotSerialization.h"
@@ -326,6 +327,27 @@ buildSobolPlotResponse(MooseServer & moose_server,
 }
 
 void
+buildQuadraturePlotResponse(MooseServer & moose_server,
+                            wasp::DataArray & plotting_responses,
+                            const Sampler & sampler,
+                            const std::vector<double> & row_indices,
+                            const std::string & plot_title)
+{
+  // read each signed quadrature weight for the selected input sampler rows
+  const auto * quad_sampler = dynamic_cast<const QuadratureSampler *>(&sampler);
+  if (!quad_sampler)
+    return;
+  std::vector<double> graph_vals;
+  for (const auto sample_row : row_indices)
+    graph_vals.push_back(quad_sampler->getQuadratureWeight(static_cast<dof_id_type>(sample_row)));
+  auto plot_object = buildInputPlot(plot_title + " quadrature weights (unnormalized)",
+                                    "quadrature row index",
+                                    "quadrature weight");
+  addInputPlotCurve(moose_server, plot_object, "displayed node weights", row_indices, graph_vals);
+  addInputPlotResponse(plotting_responses, plot_object);
+}
+
+void
 buildSamplerPlotResponses(MooseServer & moose_server,
                           wasp::DataArray & plotting_responses,
                           FEProblemBase & problem,
@@ -350,6 +372,8 @@ buildSamplerPlotResponses(MooseServer & moose_server,
   addInputPlotResponse(plotting_responses, design_plot);
   buildMorrisPlotResponse(moose_server, plotting_responses, *sampler_ptr, column_values);
   buildSobolPlotResponse(moose_server, plotting_responses, *sampler_ptr, column_values);
+  buildQuadraturePlotResponse(
+      moose_server, plotting_responses, *sampler_ptr, row_indices, plot_title);
   if (column_values.size() > 1)
   {
     auto scatter_plot = buildInputPlot(plot_title + " paired columns", "column 0", "column 1");

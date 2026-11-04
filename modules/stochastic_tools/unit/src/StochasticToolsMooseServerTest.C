@@ -11,6 +11,7 @@
 #include "Moose.h"
 #include "FEProblemBase.h"
 #include "Sampler.h"
+#include "QuadratureSampler.h"
 #include "wasplsp/LSP.h"
 #include "waspplot/CustomPlotSerialization.h"
 #include "gtest/gtest.h"
@@ -464,4 +465,39 @@ TEST_F(StochasticToolsMooseServerTest, PlottingSamplerSobolResampling)
   ASSERT_TRUE(blocks_plot);
   EXPECT_EQ((std::vector<double>{100, 10, 100, 100, 10, 10}), blocks_plot->series()[0]->values());
   EXPECT_EQ((std::vector<double>{200, 200, 20, 20, 200, 20}), blocks_plot->series()[1]->values());
+}
+
+TEST_F(StochasticToolsMooseServerTest, PlottingSamplerQuadratureWeights)
+{
+  // prepare input objects used by the specified plotting extension request
+  ASSERT_TRUE(check_plotting_input(build_plotting_input(R"INPUT(
+[Distributions]
+  [u]
+    type = Uniform
+    lower_bound = -1
+    upper_bound = 1
+  []
+[]
+[Samplers]
+  [design]
+    type = Quadrature
+    distributions = 'u u'
+    order = 3
+    sparse_grid = smolyak
+  []
+[]
+)INPUT")));
+  ASSERT_TRUE(check_plotting_request("type = Quadrature"));
+  const auto weights_plot = get_plotting_object("quadrature weights (unnormalized)");
+  ASSERT_TRUE(weights_plot);
+  auto & sampler = dynamic_cast<QuadratureSampler &>(
+      moose_server->getCheckApp().actionWarehouse().problemBase()->getSampler("design"));
+  const auto & observation_values = weights_plot->series()[0]->values();
+  ASSERT_EQ(sampler.getNumberOfRows(), observation_values.size());
+  EXPECT_TRUE(std::any_of(observation_values.begin(),
+                          observation_values.end(),
+                          [](Real graph_keys) { return graph_keys < 0; }));
+  for (const auto row : index_range(observation_values))
+    EXPECT_DOUBLE_EQ(sampler.getQuadratureWeight(row), observation_values[row]);
+  EXPECT_LT(weights_plot->y1Axis().rangeMin(), 0);
 }
