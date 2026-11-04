@@ -125,7 +125,11 @@ isSamplerInputPlotSupported(FEProblemBase &, const Sampler & sampler, unsigned i
                                                "Cartesian1D",
                                                "DirectPerturbationSampler",
                                                "Quadrature",
-                                               "QuadratureSampler"};
+                                               "QuadratureSampler",
+                                               "MonteCarlo",
+                                               "MonteCarloSampler",
+                                               "LatinHypercube",
+                                               "NestedMonteCarlo"};
   return sampler_types.count(sampler.type());
 }
 
@@ -180,16 +184,34 @@ getSamplerInputData(FEProblemBase & problem,
   }
   else if (!isSamplerInputPlotSupported(problem, sampler))
     return false;
-  const auto plot_num_rows = std::min(num_rows, row_limit);
+  const bool use_first_rows =
+      sampler.type() == "MonteCarlo" || sampler.type() == "MonteCarloSampler" ||
+      sampler.type() == "LatinHypercube" || sampler.type() == "NestedMonteCarlo";
+  // cap indexed work at 200000 draws as earlier random draws are traversed
+  constexpr dof_id_type draw_limit = 200000;
+  if (sampler.type() == "LatinHypercube" && num_columns > 1024)
+    // limit LHS to 1024 columns as each column needs its permutation cache
+    return false;
+  auto plot_num_rows = std::min(num_rows, row_limit);
+  if (use_first_rows)
+    plot_num_rows = std::min(plot_num_rows,
+                             1 + (draw_limit - std::min(num_columns, column_limit)) / num_columns);
+  if (sampler.type() == "NestedMonteCarlo")
+    // tighten the draw budget for reseeding with nested input sampler rows
+    plot_num_rows =
+        std::min(plot_num_rows,
+                 static_cast<dof_id_type>(std::sqrt(draw_limit / double(num_columns) /
+                                                    std::min(num_columns, column_limit))));
   if (!plot_num_rows || !num_columns)
     return false;
   column_values.resize(std::min(num_columns, column_limit));
   for (const auto i : make_range(plot_num_rows))
   {
     const auto sample_row =
-        plot_num_rows == 1 ? 0
-                           : ((num_rows - 1) / (plot_num_rows - 1)) * i +
-                                 ((num_rows - 1) % (plot_num_rows - 1)) * i / (plot_num_rows - 1);
+        use_first_rows || plot_num_rows == 1
+            ? i
+            : ((num_rows - 1) / (plot_num_rows - 1)) * i +
+                  ((num_rows - 1) % (plot_num_rows - 1)) * i / (plot_num_rows - 1);
     row_indices.push_back(sample_row);
     for (const auto column : index_range(column_values))
     {
@@ -202,7 +224,8 @@ getSamplerInputData(FEProblemBase & problem,
   }
   plot_title = sampler.name() + " (input design: " + std::to_string(plot_num_rows) + "/" +
                std::to_string(num_rows) + " rows; first " + std::to_string(column_values.size()) +
-               "/" + std::to_string(num_columns) + " columns; evenly spaced rows)";
+               "/" + std::to_string(num_columns) + " columns; " +
+               (use_first_rows ? "first rows" : "evenly spaced rows") + ")";
   return true;
 }
 

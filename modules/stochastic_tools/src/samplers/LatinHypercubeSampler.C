@@ -44,6 +44,12 @@ LatinHypercubeSampler::LatinHypercubeSampler(const InputParameters & parameters)
 void
 LatinHypercubeSampler::executeTearDown()
 {
+  initializeShufflers();
+}
+
+void
+LatinHypercubeSampler::initializeShufflers() const
+{
   _shufflers.clear();
   for (const auto col : make_range(getNumberOfCols()))
   {
@@ -55,7 +61,8 @@ LatinHypercubeSampler::executeTearDown()
 Real
 LatinHypercubeSampler::computeSample(dof_id_type row_index, dof_id_type col_index) const
 {
-  mooseAssert(_shufflers.size() > 0, "Shufflers have not been initialized.");
+  if (_shufflers.empty())
+    initializeShufflers();
 
   // Divide [0,1] into N equal bins of width 1/N.
   const Real bin_size = 1. / getNumberOfRows();

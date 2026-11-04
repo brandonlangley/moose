@@ -267,3 +267,106 @@ TEST_F(StochasticToolsMooseServerTest, PlottingSamplerInputVectors)
   // check previews leave the sampler row counts unchanged before execution
   EXPECT_EQ(1, sampler.getNumberOfRows());
 }
+
+TEST_F(StochasticToolsMooseServerTest, PlottingSamplerRandomDraws)
+{
+  // prepare input objects used by the specified plotting extension request
+  std::string dist_names;
+  for (const auto i : make_range(4000))
+    dist_names += i ? " u" : "u";
+  ASSERT_TRUE(check_plotting_input(build_plotting_input(R"INPUT(
+[Distributions]
+  [u]
+    type = Uniform
+    lower_bound = 0
+    upper_bound = 1
+  []
+[]
+[Samplers]
+  [design]
+    type = MonteCarlo
+    num_rows = 5000
+    distributions = ')INPUT" + dist_names + R"INPUT('
+  []
+[]
+)INPUT")));
+  ASSERT_TRUE(check_plotting_request("type = MonteCarlo"));
+  const auto design_plot = get_plotting_object("input design:");
+  ASSERT_TRUE(design_plot);
+  ASSERT_EQ(4u, design_plot->series().size());
+  ASSERT_EQ(50u, design_plot->series()[0]->keys().size());
+  EXPECT_EQ(49, design_plot->series()[0]->keys().back());
+  auto & sampler =
+      moose_server->getCheckApp().actionWarehouse().problemBase()->getSampler("design");
+  EXPECT_DOUBLE_EQ(sampler.getSample(49, 3), design_plot->series()[3]->values().back());
+  EXPECT_NE(std::string::npos, design_plot->title().text().find("first rows"));
+}
+
+TEST_F(StochasticToolsMooseServerTest, PlottingSamplerLatinHypercube)
+{
+  // prepare input objects used by the specified plotting extension request
+  ASSERT_TRUE(check_plotting_input(build_plotting_input(R"INPUT(
+[Distributions]
+  [u]
+    type = Uniform
+    lower_bound = 0
+    upper_bound = 1
+  []
+[]
+[Samplers]
+  [design]
+    type = LatinHypercube
+    num_rows = 16
+    distributions = 'u u'
+  []
+[]
+)INPUT")));
+  ASSERT_TRUE(check_plotting_request("type = LatinHypercube"));
+  const auto design_plot = get_plotting_object("input design:");
+  ASSERT_TRUE(design_plot);
+  for (const auto & graph_series : design_plot->series())
+  {
+    std::vector<unsigned int> bins;
+    for (const auto value : graph_series->values())
+      bins.push_back(std::floor(16 * value));
+    std::sort(bins.begin(), bins.end());
+    for (const auto i : index_range(bins))
+      EXPECT_EQ(i, bins[i]);
+  }
+  auto & problem = *moose_server->getCheckApp().actionWarehouse().problemBase();
+  problem.executeSamplers(EXEC_INITIAL);
+  auto & sampler = problem.getSampler("design");
+  for (const auto col : index_range(design_plot->series()))
+    for (const auto row : index_range(design_plot->series()[col]->values()))
+      EXPECT_DOUBLE_EQ(design_plot->series()[col]->values()[row], sampler.getSample(row, col));
+}
+
+TEST_F(StochasticToolsMooseServerTest, PlottingSamplerNestedMonteCarlo)
+{
+  // prepare input objects used by the specified plotting extension request
+  ASSERT_TRUE(check_plotting_input(build_plotting_input(R"INPUT(
+[Distributions]
+  [u]
+    type = Uniform
+    lower_bound = 0
+    upper_bound = 1
+  []
+[]
+[Samplers]
+  [design]
+    type = NestedMonteCarlo
+    num_rows = '2 3'
+    distributions = 'u; u'
+  []
+[]
+)INPUT")));
+  ASSERT_TRUE(check_plotting_request("type = NestedMonteCarlo"));
+  const auto design_plot = get_plotting_object("input design:");
+  ASSERT_TRUE(design_plot);
+  const auto & outer_values = design_plot->series()[0]->values();
+  ASSERT_EQ(6u, outer_values.size());
+  EXPECT_EQ(outer_values[0], outer_values[1]);
+  EXPECT_EQ(outer_values[1], outer_values[2]);
+  EXPECT_EQ(outer_values[3], outer_values[4]);
+  EXPECT_EQ(outer_values[4], outer_values[5]);
+}

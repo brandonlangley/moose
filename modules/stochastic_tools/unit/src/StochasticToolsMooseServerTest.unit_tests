@@ -25,4 +25,22 @@
     unit_test = StochasticToolsMooseServerTest.PlottingSamplerInputVectors
     requirement = 'The system shall preview declared constant Reporter vectors without executing or resizing their sampler.'
   []
+
+  [sampler_random_draws]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingSamplerRandomDraws
+    requirement = 'The system shall limit indexed random draws while preserving the sampled values of displayed input columns.'
+  []
+
+  [sampler_latin_hypercube]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingSamplerLatinHypercube
+    requirement = 'The system shall preview Latin hypercube strata without changing the design used by its first execution.'
+  []
+
+  [sampler_nested_monte_carlo]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingSamplerNestedMonteCarlo
+    requirement = 'The system shall preserve outer-loop replication when plotting a nested Monte Carlo input design.'
+  []
 []

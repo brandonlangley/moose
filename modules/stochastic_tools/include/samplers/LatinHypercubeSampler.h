@@ -42,6 +42,9 @@ protected:
    */
   virtual void executeTearDown() override;
 
+  /// Initialize sampling permutations without advancing random generators.
+  void initializeShufflers() const;
+
   /**
    * Return the sample value for the given row and column.
    *
