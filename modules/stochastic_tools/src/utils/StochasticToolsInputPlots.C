@@ -116,7 +116,9 @@ addInputPlotResponse(wasp::DataArray & plotting_responses, const wasp::CustomPlo
 }
 
 bool
-isSamplerInputPlotSupported(FEProblemBase &, const Sampler & sampler, unsigned int = 0)
+isSamplerInputPlotSupported(FEProblemBase & problem,
+                            const Sampler & sampler,
+                            unsigned int sampler_depth = 0)
 {
   const std::set<std::string> sampler_types = {"InputMatrix",
                                                "CSVSampler",
@@ -131,6 +133,19 @@ isSamplerInputPlotSupported(FEProblemBase &, const Sampler & sampler, unsigned i
                                                "LatinHypercube",
                                                "NestedMonteCarlo",
                                                "MorrisSampler"};
+  if (sampler.type() == "Sobol" || sampler.type() == "SobolSampler")
+  {
+    // bound Sobol composition depth to four nested input sampler instances
+    if (sampler_depth >= 4)
+      return false;
+    const auto * sampler_a =
+        getInputPlotObject<Sampler>(problem, sampler.getParam<SamplerName>("sampler_a"), "Sampler");
+    const auto * sampler_b =
+        getInputPlotObject<Sampler>(problem, sampler.getParam<SamplerName>("sampler_b"), "Sampler");
+    return sampler_a && sampler_b &&
+           isSamplerInputPlotSupported(problem, *sampler_a, sampler_depth + 1) &&
+           isSamplerInputPlotSupported(problem, *sampler_b, sampler_depth + 1);
+  }
   return sampler_types.count(sampler.type());
 }
 
@@ -185,7 +200,8 @@ getSamplerInputData(FEProblemBase & problem,
   }
   else if (!isSamplerInputPlotSupported(problem, sampler))
     return false;
-  const bool use_first_rows = sampler.type() == "MorrisSampler" || sampler.type() == "MonteCarlo" ||
+  const bool use_first_rows = sampler.type() == "Sobol" || sampler.type() == "SobolSampler" ||
+                              sampler.type() == "MorrisSampler" || sampler.type() == "MonteCarlo" ||
                               sampler.type() == "MonteCarloSampler" ||
                               sampler.type() == "LatinHypercube" ||
                               sampler.type() == "NestedMonteCarlo";
@@ -212,6 +228,14 @@ getSamplerInputData(FEProblemBase & problem,
     if (num_columns > 8)
       return false;
     plot_num_rows = std::min<dof_id_type>(num_rows, 8 * (num_columns + 1));
+  }
+  if (sampler.type() == "Sobol" || sampler.type() == "SobolSampler")
+  {
+    if (num_columns > 8)
+      return false;
+    const auto blocks = (sampler.getParam<bool>("resample") ? 2 : 1) * num_columns + 2;
+    // read all Sobol blocks from eight base rows to bound indexed sampling
+    plot_num_rows = std::min<dof_id_type>(num_rows, 8 * blocks);
   }
   column_values.resize(std::min(num_columns, column_limit));
   for (const auto i : make_range(plot_num_rows))
@@ -273,6 +297,35 @@ buildMorrisPlotResponse(MooseServer & moose_server,
 }
 
 void
+buildSobolPlotResponse(MooseServer & moose_server,
+                       wasp::DataArray & plotting_responses,
+                       const Sampler & sampler,
+                       const std::vector<std::vector<double>> & column_values)
+{
+  // show the initial B and hybrid input rows followed by their final A row
+  if (sampler.type() != "Sobol" && sampler.type() != "SobolSampler")
+    return;
+  const auto num_blocks =
+      (sampler.getParam<bool>("resample") ? 2 : 1) * sampler.getNumberOfCols() + 2;
+  if (column_values[0].size() < num_blocks)
+    return;
+  std::vector<double> graph_keys;
+  for (const auto i : make_range(num_blocks))
+    graph_keys.push_back(i);
+  auto plot_object = buildInputPlot(sampler.name() + " Sobol input matrix blocks (first base row)",
+                                    "matrix block index (0=B, last=A)",
+                                    "input value");
+  for (const auto column : index_range(column_values))
+    addInputPlotCurve(moose_server,
+                      plot_object,
+                      "column " + std::to_string(column),
+                      graph_keys,
+                      std::vector<double>(column_values[column].begin(),
+                                          column_values[column].begin() + num_blocks));
+  addInputPlotResponse(plotting_responses, plot_object);
+}
+
+void
 buildSamplerPlotResponses(MooseServer & moose_server,
                           wasp::DataArray & plotting_responses,
                           FEProblemBase & problem,
@@ -296,6 +349,7 @@ buildSamplerPlotResponses(MooseServer & moose_server,
                       column_values[column]);
   addInputPlotResponse(plotting_responses, design_plot);
   buildMorrisPlotResponse(moose_server, plotting_responses, *sampler_ptr, column_values);
+  buildSobolPlotResponse(moose_server, plotting_responses, *sampler_ptr, column_values);
   if (column_values.size() > 1)
   {
     auto scatter_plot = buildInputPlot(plot_title + " paired columns", "column 0", "column 1");

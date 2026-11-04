@@ -407,3 +407,61 @@ TEST_F(StochasticToolsMooseServerTest, PlottingSamplerMorris)
     }
   }
 }
+
+TEST_F(StochasticToolsMooseServerTest, PlottingSamplerSobol)
+{
+  // prepare input objects used by the specified plotting extension request
+  ASSERT_TRUE(check_plotting_input(build_plotting_input(R"INPUT(
+[Samplers]
+  [a]
+    type = InputMatrix
+    matrix = '10 20; 11 21'
+  []
+  [b]
+    type = InputMatrix
+    matrix = '100 200; 101 201'
+  []
+  [design]
+    type = Sobol
+    sampler_a = a
+    sampler_b = b
+    resample = false
+  []
+[]
+)INPUT")));
+  ASSERT_TRUE(check_plotting_request("type = Sobol"));
+  const auto blocks_plot = get_plotting_object("Sobol input matrix blocks");
+  ASSERT_TRUE(blocks_plot);
+  ASSERT_EQ(2u, blocks_plot->series().size());
+  EXPECT_EQ((std::vector<double>{100, 10, 100, 10}), blocks_plot->series()[0]->values());
+  EXPECT_EQ((std::vector<double>{200, 200, 20, 20}), blocks_plot->series()[1]->values());
+  EXPECT_EQ((std::vector<double>{0, 1, 2, 3}), blocks_plot->series()[0]->keys());
+}
+
+TEST_F(StochasticToolsMooseServerTest, PlottingSamplerSobolResampling)
+{
+  // prepare input objects used by the specified plotting extension request
+  ASSERT_TRUE(check_plotting_input(build_plotting_input(R"INPUT(
+[Samplers]
+  [a]
+    type = InputMatrix
+    matrix = '10 20'
+  []
+  [b]
+    type = InputMatrix
+    matrix = '100 200'
+  []
+  [design]
+    type = Sobol
+    sampler_a = a
+    sampler_b = b
+    resample = true
+  []
+[]
+)INPUT")));
+  ASSERT_TRUE(check_plotting_request("type = Sobol"));
+  const auto blocks_plot = get_plotting_object("Sobol input matrix blocks");
+  ASSERT_TRUE(blocks_plot);
+  EXPECT_EQ((std::vector<double>{100, 10, 100, 100, 10, 10}), blocks_plot->series()[0]->values());
+  EXPECT_EQ((std::vector<double>{200, 200, 20, 20, 200, 20}), blocks_plot->series()[1]->values());
+}

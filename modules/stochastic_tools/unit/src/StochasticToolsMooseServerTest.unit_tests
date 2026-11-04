@@ -49,4 +49,16 @@
     unit_test = StochasticToolsMooseServerTest.PlottingSamplerMorris
     requirement = 'The system shall plot complete Morris input trajectories using the configured sampler values.'
   []
+
+  [sampler_sobol]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingSamplerSobol
+    requirement = 'The system shall plot Sobol base and hybrid matrix blocks using the configured sampler values.'
+  []
+
+  [sampler_sobol_resampling]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingSamplerSobolResampling
+    requirement = 'The system shall include complementary Sobol hybrid blocks when resampling is enabled.'
+  []
 []
