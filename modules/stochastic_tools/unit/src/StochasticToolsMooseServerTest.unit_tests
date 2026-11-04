@@ -118,4 +118,11 @@
     requirement = 'The system shall preview upper-tail probabilities by subtracting the configured cumulative probability from one.'
     design = 'syntax/Distributions/index.md'
   []
+
+  [distribution_log_density]
+    type = GoogleTest
+    unit_test = StochasticToolsMooseServerTest.PlottingDistributionLogDensity
+    requirement = 'The system shall keep positive distribution densities visible on logarithmic axes without changing the ordinary density preview.'
+    design = 'syntax/Distributions/index.md'
+  []
 []

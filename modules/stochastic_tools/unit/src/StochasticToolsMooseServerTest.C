@@ -705,3 +705,29 @@ TEST_F(StochasticToolsMooseServerTest, PlottingDistributionUpperTail)
   EXPECT_EQ(0, tail_plot->y1Axis().rangeMin());
   EXPECT_EQ(1, tail_plot->y1Axis().rangeMax());
 }
+
+TEST_F(StochasticToolsMooseServerTest, PlottingDistributionLogDensity)
+{
+  // prepare input objects used by the specified plotting extension request
+  ASSERT_TRUE(check_plotting_input(build_plotting_input(R"INPUT(
+[Distributions]
+  [u]
+    type = Uniform
+    lower_bound = 0.5
+    upper_bound = 2.5
+  []
+[]
+)INPUT")));
+  ASSERT_TRUE(check_plotting_request("type = Uniform"));
+  const auto density_plot = get_plotting_object("input positive PDF");
+  ASSERT_TRUE(density_plot);
+  EXPECT_EQ(wasp::CustomPlot::stLogarithmic, density_plot->y1Axis().scaleType());
+  EXPECT_DOUBLE_EQ(0.25, density_plot->y1Axis().rangeMin());
+  EXPECT_DOUBLE_EQ(1, density_plot->y1Axis().rangeMax());
+  for (const auto value : density_plot->series()[0]->values())
+    EXPECT_DOUBLE_EQ(0.5, value);
+  const auto original_plot = get_plotting_object(" PDF Distribution");
+  ASSERT_TRUE(original_plot);
+  EXPECT_DOUBLE_EQ(0.45, original_plot->y1Axis().rangeMin());
+  EXPECT_DOUBLE_EQ(0.55, original_plot->y1Axis().rangeMax());
+}

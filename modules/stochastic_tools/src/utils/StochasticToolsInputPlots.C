@@ -633,6 +633,58 @@ buildTailPlotResponse(MooseServer & moose_server,
 }
 
 void
+buildLogDensityPlotResponse(MooseServer & moose_server,
+                            wasp::DataArray & plotting_responses,
+                            FEProblemBase & problem,
+                            const std::string & object_name)
+{
+  // split positive density curves at zeros which log axes cannot represent
+  const auto * dist_ptr = getInputPlotObject<Distribution>(problem, object_name, "Distribution");
+  if (!dist_ptr)
+    return;
+  std::vector<double> probabilities, quantiles, graph_keys, graph_vals;
+  getDistributionPlotData(*dist_ptr, probabilities, quantiles);
+  auto plot_object =
+      buildInputPlot(object_name + " input positive PDF (log scale; sampled zeros omitted)",
+                     "input value",
+                     "probability density (log scale)");
+  double density_min = std::numeric_limits<double>::max(), density_max = 0;
+  const auto append_curve = [&]()
+  {
+    if (!graph_keys.empty())
+      addInputPlotCurve(
+          moose_server, plot_object, "positive density", graph_keys, graph_vals, true);
+    graph_keys.clear();
+    graph_vals.clear();
+  };
+  for (const auto quantile_value : quantiles)
+  {
+    const auto density = dist_ptr->pdf(quantile_value);
+    if (!std::isfinite(density) || density < 0)
+      throw std::invalid_argument("Log-density preview contains an invalid density");
+    if (!density)
+    {
+      append_curve();
+      continue;
+    }
+    density_min = std::min(density_min, density);
+    density_max = std::max(density_max, density);
+    graph_keys.push_back(quantile_value);
+    graph_vals.push_back(density);
+  }
+  append_curve();
+  if (!density_max)
+    return;
+  plot_object.y1Axis().scaleType(wasp::CustomPlot::stLogarithmic);
+  plot_object.y1Axis().rangeMin(
+      std::max(density_min / 2, std::numeric_limits<double>::denorm_min()));
+  plot_object.y1Axis().rangeMax(density_max < std::numeric_limits<double>::max() / 2
+                                    ? density_max * 2
+                                    : std::numeric_limits<double>::max());
+  addInputPlotResponse(plotting_responses, plot_object);
+}
+
+void
 buildSamplerPlotResponses(MooseServer & moose_server,
                           wasp::DataArray & plotting_responses,
                           FEProblemBase & problem,
@@ -678,4 +730,5 @@ StochasticTools::registerInputPlots()
   MooseServer::registerInputPlotter("Samplers", "input-design", buildSamplerPlotResponses);
   MooseServer::registerInputPlotter("Distributions", "quantiles", buildQuantilePlotResponses);
   MooseServer::registerInputPlotter("Distributions", "tails", buildTailPlotResponse);
+  MooseServer::registerInputPlotter("Distributions", "log-density", buildLogDensityPlotResponse);
 }
